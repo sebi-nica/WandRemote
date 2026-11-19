@@ -5,36 +5,49 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mouse
+import androidx.compose.material.icons.outlined.Mouse
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.example.wandremote.WandViewModel
@@ -42,10 +55,27 @@ import com.example.wandremote.network.ConnectionState
 import com.example.wandremote.sensors.VolumeKeys
 import com.example.wandremote.shared.MouseButton
 import com.example.wandremote.shared.Packet
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.hypot
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
-private const val SCROLL_NOTCHES_PER_STRIP = 10f
+/** One scroll notch per this many degrees of knob rotation. */
+private const val DEGREES_PER_NOTCH = 24f
 
-private fun vibrateClick(context: Context) {
+/** Knob radius as a fraction of the content width. */
+private const val KNOB_RADIUS_FRACTION = 0.20f
+
+private val EDGE_PADDING = 12.dp
+private val TOGGLE_RADIUS = 30.dp
+
+private enum class Role { LEFT, RIGHT, KNOB }
+
+private class Geo(val cx: Float, val cy: Float, val knobR: Float, val ringIn: Float, val ringOut: Float)
+
+private fun vibrate(context: Context, ms: Long) {
     val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
     } else {
@@ -53,74 +83,48 @@ private fun vibrateClick(context: Context) {
         context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
     }
     if (vibrator.hasVibrator()) {
-        vibrator.vibrate(VibrationEffect.createOneShot(20, VibrationEffect.DEFAULT_AMPLITUDE))
+        vibrator.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
     }
 }
 
-/** Button that reports press and release separately, so hold-and-move dragging works. */
-@Composable
-private fun HoldButton(label: String, primary: Boolean, onDown: () -> Unit, onUp: () -> Unit, modifier: Modifier) {
-    var pressed by remember { mutableStateOf(false) }
-    val scheme = MaterialTheme.colorScheme
-    val bg = when {
-        pressed -> scheme.tertiary
-        primary -> scheme.primary
-        else -> scheme.secondaryContainer
-    }
-    val fg = when {
-        pressed -> scheme.onTertiary
-        primary -> scheme.onPrimary
-        else -> scheme.onSecondaryContainer
-    }
-    Box(
-        modifier
-            .background(bg, RoundedCornerShape(20.dp))
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown()
-                    pressed = true
-                    onDown()
-                    try {
-                        waitForUpOrCancellation()
-                    } finally {
-                        pressed = false
-                        onUp()
-                    }
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) { Text(label, color = fg, style = MaterialTheme.typography.titleMedium) }
+/** Screen angle of (x, y) around the center in degrees, 0 = east, clockwise positive, [0, 360). */
+private fun angleDeg(x: Float, y: Float, g: Geo): Float {
+    val a = Math.toDegrees(atan2((y - g.cy).toDouble(), (x - g.cx).toDouble())).toFloat()
+    return if (a < 0f) a + 360f else a
 }
 
 @Composable
 fun PointerScreen(vm: WandViewModel) {
     val context = LocalContext.current
+    val view = LocalView.current
     val connection by vm.connection.state.collectAsState()
     val isConnected = connection is ConnectionState.Connected
-    var touchClutch by remember { mutableStateOf(false) }
-    var proximity by remember { mutableStateOf(false) }
-    val clutch = touchClutch || proximity
-    var scrollTouched by remember { mutableStateOf(false) }
-    val down = remember { booleanArrayOf(false, false) } // [left, right]
+
+    var movementOn by remember { mutableStateOf(false) }
+    var leftDown by remember { mutableStateOf(false) }
+    var rightDown by remember { mutableStateOf(false) }
+    var knobAngle by remember { mutableFloatStateOf(0f) } // degrees, accumulated, drawn rotation
 
     fun setButton(button: MouseButton, pressed: Boolean) {
-        val i = if (button == MouseButton.LEFT) 0 else 1
-        if (down[i] == pressed) return
-        down[i] = pressed
+        val left = button == MouseButton.LEFT
+        if ((if (left) leftDown else rightDown) == pressed) return
+        if (left) leftDown = pressed else rightDown = pressed
         vm.connection.send(Packet.Button(button, pressed))
-        if (pressed) vibrateClick(context)
+        if (pressed) vibrate(context, 20)
     }
 
-    // Gyro + proximity only while this screen is resumed.
+    fun setMovement(on: Boolean) {
+        movementOn = on
+        vm.sensors.movementEnabled = on
+    }
+
+    // Gyro only while this screen is resumed. Movement always starts OFF.
     LifecycleResumeEffect(vm) {
-        vm.sensors.startPointer(
-            onMove = { dx, dy -> vm.connection.send(Packet.Move(dx, dy)) },
-            onProximityChange = { proximity = it },
-        )
+        setMovement(false)
+        vm.sensors.startPointer(onMove = { dx, dy -> vm.connection.send(Packet.Move(dx, dy)) })
         onPauseOrDispose {
             vm.sensors.stopPointer()
-            proximity = false
-            touchClutch = false
+            setMovement(false)
             // Never leave a button stuck down on the PC.
             setButton(MouseButton.LEFT, false)
             setButton(MouseButton.RIGHT, false)
@@ -137,94 +141,198 @@ fun PointerScreen(vm: WandViewModel) {
         onDispose { VolumeKeys.handler = null }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .background(
-                        if (clutch) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
-                        RoundedCornerShape(24.dp),
-                    )
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown()
-                            touchClutch = true
-                            vm.sensors.touchClutch = true
-                            try {
-                                waitForUpOrCancellation()
-                            } finally {
-                                touchClutch = false
-                                vm.sensors.touchClutch = false
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    if (clutch) "Moving cursor..." else "Hold to move cursor",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = if (clutch) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
-                    textAlign = TextAlign.Center,
-                )
-            }
-            Box(
-                Modifier
-                    .width(56.dp)
-                    .fillMaxHeight()
-                    .background(
-                        if (scrollTouched) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.tertiaryContainer,
-                        RoundedCornerShape(16.dp),
-                    )
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val first = awaitFirstDown()
-                            scrollTouched = true
-                            var lastY = first.position.y
-                            try {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull { it.id == first.id } ?: break
-                                    val dy = change.position.y - lastY
-                                    lastY = change.position.y
-                                    if (dy != 0f) {
-                                        // Drag down = scroll down = positive dy.
-                                        vm.connection.send(Packet.Scroll(0f, dy / size.height * SCROLL_NOTCHES_PER_STRIP))
-                                        change.consume()
-                                    }
-                                    if (!change.pressed) break
-                                }
-                            } finally {
-                                scrollTouched = false
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("SCROLL", style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
-            }
+    val onButton by rememberUpdatedState<(MouseButton, Boolean) -> Unit> { b, p -> setButton(b, p) }
+    val onKnobTurn by rememberUpdatedState<(Float) -> Unit> { deltaDeg ->
+        knobAngle += deltaDeg
+        vm.connection.send(Packet.Scroll(0f, deltaDeg / DEGREES_PER_NOTCH))
+    }
+    val onTick by rememberUpdatedState<() -> Unit> {
+        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+    }
+
+    val scheme = MaterialTheme.colorScheme
+
+    BoxWithConstraints(Modifier.fillMaxSize().padding(EDGE_PADDING)) {
+        val density = LocalDensity.current
+        val wPx = with(density) { maxWidth.toPx() }
+        val hPx = with(density) { maxHeight.toPx() }
+        val knobR = wPx * KNOB_RADIUS_FRACTION
+        val gap = with(density) { 8.dp.toPx() }
+        val ringIn = knobR + gap
+        val ringOut = ringIn + knobR
+        val geo = remember(wPx, hPx) { Geo(wPx - knobR, hPx - knobR, knobR, ringIn, ringOut) }
+        val toggleR = with(density) { TOGGLE_RADIUS.toPx() }
+
+        // Status text, top-left.
+        Column(Modifier.align(Alignment.TopStart)) {
+            Text(
+                if (movementOn) "Movement ON" else "Movement OFF",
+                style = MaterialTheme.typography.titleLarge,
+                color = if (movementOn) scheme.primary else scheme.onSurfaceVariant,
+            )
+            Text(
+                "Volume down = left click, volume up = right click",
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+            )
         }
 
-        Text(
-            "Volume keys = click  |  Tap the back of the phone = click",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-        )
-
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HoldButton(
-                "Left click", true,
-                onDown = { setButton(MouseButton.LEFT, true) },
-                onUp = { setButton(MouseButton.LEFT, false) },
-                modifier = Modifier.weight(1f).height(72.dp),
+        // Knob, click ring and all touch handling.
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(geo) {
+                    awaitEachGesture {
+                        val roles = HashMap<PointerId, Role>()
+                        val lastAngle = HashMap<PointerId, Float>()
+                        var notchPos = 0f // total rotation of this gesture in notches, for haptic ticks
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                for (c in event.changes) {
+                                    val role = roles[c.id]
+                                    if (role == null) {
+                                        if (!c.changedToDown()) continue
+                                        val dist = hypot(c.position.x - geo.cx, c.position.y - geo.cy)
+                                        val ang = angleDeg(c.position.x, c.position.y, geo)
+                                        val newRole = when {
+                                            dist <= geo.ringIn -> Role.KNOB
+                                            dist <= geo.ringOut && ang in 170f..280f ->
+                                                if (ang < 225f) Role.LEFT else Role.RIGHT
+                                            else -> null
+                                        } ?: continue
+                                        roles[c.id] = newRole
+                                        c.consume()
+                                        when (newRole) {
+                                            Role.LEFT -> onButton(MouseButton.LEFT, true)
+                                            Role.RIGHT -> onButton(MouseButton.RIGHT, true)
+                                            Role.KNOB -> lastAngle[c.id] = ang
+                                        }
+                                    } else if (!c.pressed) {
+                                        roles.remove(c.id)
+                                        lastAngle.remove(c.id)
+                                        when (role) {
+                                            Role.LEFT -> onButton(MouseButton.LEFT, false)
+                                            Role.RIGHT -> onButton(MouseButton.RIGHT, false)
+                                            Role.KNOB -> Unit
+                                        }
+                                        c.consume()
+                                    } else if (role == Role.KNOB) {
+                                        val ang = angleDeg(c.position.x, c.position.y, geo)
+                                        var d = ang - (lastAngle[c.id] ?: ang)
+                                        if (d > 180f) d -= 360f
+                                        if (d < -180f) d += 360f
+                                        lastAngle[c.id] = ang
+                                        if (d != 0f) {
+                                            // Screen angles grow clockwise, so d > 0 = clockwise = scroll down.
+                                            onKnobTurn(d)
+                                            val before = floor(notchPos)
+                                            notchPos += d / DEGREES_PER_NOTCH
+                                            if (floor(notchPos) != before) onTick()
+                                        }
+                                        c.consume()
+                                    } else {
+                                        c.consume() // held button: swallow drags
+                                    }
+                                }
+                                if (event.changes.none { it.pressed }) break
+                            }
+                        } finally {
+                            if (roles.containsValue(Role.LEFT)) onButton(MouseButton.LEFT, false)
+                            if (roles.containsValue(Role.RIGHT)) onButton(MouseButton.RIGHT, false)
+                        }
+                    }
+                },
+        ) {
+            val center = Offset(geo.cx, geo.cy)
+            val thickness = geo.ringOut - geo.ringIn
+            val mid = (geo.ringIn + geo.ringOut) / 2f
+            val arcTopLeft = Offset(geo.cx - mid, geo.cy - mid)
+            val arcSize = Size(mid * 2, mid * 2)
+            // Left = lower-left half (west .. diagonal), right = upper half (diagonal .. north).
+            drawArc(
+                color = if (leftDown) scheme.primary else scheme.secondaryContainer,
+                startAngle = 180f, sweepAngle = 43f, useCenter = false,
+                topLeft = arcTopLeft, size = arcSize, style = Stroke(thickness),
             )
-            HoldButton(
-                "Right click", false,
-                onDown = { setButton(MouseButton.RIGHT, true) },
-                onUp = { setButton(MouseButton.RIGHT, false) },
-                modifier = Modifier.weight(1f).height(72.dp),
+            drawArc(
+                color = if (rightDown) scheme.tertiary else scheme.tertiaryContainer,
+                startAngle = 227f, sweepAngle = 43f, useCenter = false,
+                topLeft = arcTopLeft, size = arcSize, style = Stroke(thickness),
+            )
+
+            // Knob: body, outline, rotating tick marks and indicator dot.
+            drawCircle(scheme.surfaceVariant, geo.knobR, center)
+            drawCircle(scheme.outline, geo.knobR, center, style = Stroke(2.dp.toPx()))
+            val ticks = (360f / DEGREES_PER_NOTCH).roundToInt()
+            for (i in 0 until ticks) {
+                val a = Math.toRadians((knobAngle + i * DEGREES_PER_NOTCH).toDouble())
+                val c = cos(a).toFloat()
+                val s = sin(a).toFloat()
+                val start = Offset(geo.cx + c * geo.knobR * 0.80f, geo.cy + s * geo.knobR * 0.80f)
+                val end = Offset(geo.cx + c * geo.knobR * 0.94f, geo.cy + s * geo.knobR * 0.94f)
+                drawLine(
+                    color = if (i == 0) scheme.primary else scheme.onSurfaceVariant,
+                    start = start, end = end,
+                    strokeWidth = (if (i == 0) 4.dp else 2.dp).toPx(),
+                    cap = StrokeCap.Round,
+                )
+            }
+            val dotA = Math.toRadians(knobAngle.toDouble())
+            drawCircle(
+                scheme.primary, 9.dp.toPx(),
+                Offset(
+                    geo.cx + cos(dotA).toFloat() * geo.knobR * 0.55f,
+                    geo.cy + sin(dotA).toFloat() * geo.knobR * 0.55f,
+                ),
+            )
+        }
+
+        // Click labels, centered in each half of the ring.
+        @Composable
+        fun RingLabel(text: String, angleDegrees: Double, color: androidx.compose.ui.graphics.Color) {
+            val mid = (geo.ringIn + geo.ringOut) / 2f
+            val a = Math.toRadians(angleDegrees)
+            Text(
+                text,
+                color = color,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.offset {
+                    IntOffset(
+                        (geo.cx + cos(a).toFloat() * mid).roundToInt() - 10.dp.roundToPx(),
+                        (geo.cy + sin(a).toFloat() * mid).roundToInt() - 14.dp.roundToPx(),
+                    )
+                },
+            )
+        }
+        RingLabel("L", 201.5, if (leftDown) scheme.onPrimary else scheme.onSecondaryContainer)
+        RingLabel("R", 248.5 - 2.0, if (rightDown) scheme.onTertiary else scheme.onTertiaryContainer)
+
+        // Movement toggle, above the ring near the right edge.
+        Box(
+            Modifier
+                .offset {
+                    IntOffset(
+                        (wPx - toggleR * 2).roundToInt(),
+                        (geo.cy - geo.ringOut - gap * 1.5f - toggleR * 2).roundToInt(),
+                    )
+                }
+                .size(TOGGLE_RADIUS * 2)
+                .clip(CircleShape)
+                .background(if (movementOn) scheme.primary else scheme.surface)
+                .clickable {
+                    setMovement(!movementOn)
+                    vibrate(context, 15)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                if (!movementOn) drawCircle(scheme.outline, size.minDimension / 2f - 1.dp.toPx(), style = Stroke(2.dp.toPx()))
+            }
+            Icon(
+                if (movementOn) Icons.Filled.Mouse else Icons.Outlined.Mouse,
+                contentDescription = if (movementOn) "Movement on" else "Movement off",
+                tint = if (movementOn) scheme.onPrimary else scheme.onSurfaceVariant,
             )
         }
     }

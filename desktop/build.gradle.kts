@@ -13,13 +13,16 @@ kotlin {
 dependencies {
     implementation(project(":shared"))
     implementation(compose.desktop.currentOs)
-    implementation(compose.material3)
-    implementation(compose.materialIconsExtended)
+    implementation(libs.compose.desktop.material3)
+    implementation(libs.compose.desktop.material.icons.extended)
+    implementation(libs.zxing.core)
 }
 
 compose.desktop {
     application {
         mainClass = "com.example.wandremote.desktop.MainKt"
+        // Skiko (Compose rendering) loads native libraries; allow it so newer JDKs don't warn.
+        jvmArgs += "--enable-native-access=ALL-UNNAMED"
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Dmg, TargetFormat.Deb)
             packageName = "WandRemote"

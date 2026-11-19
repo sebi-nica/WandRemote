@@ -140,10 +140,7 @@ private fun PairingSection(state: AppState) {
     LabeledValue("Local IP", state.localIp)
     LabeledValue("UDP port", Protocol.DEFAULT_UDP_PORT.toString())
     LabeledValue("TCP port", Protocol.DEFAULT_TCP_PORT.toString())
-    Box(
-        Modifier.size(200.dp).border(BorderStroke(2.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center,
-    ) { Text("QR code") }
+    QrCode(uri, Modifier.size(200.dp))
     Text(uri, fontFamily = FontFamily.Monospace)
     OutlinedButton(onClick = {
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(uri), null)

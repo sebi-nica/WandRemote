@@ -1,6 +1,9 @@
 package com.example.wandremote.ui.screens.connect
 
 import android.widget.Toast
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -112,7 +115,16 @@ fun ConnectScreen(vm: WandViewModel, onConnect: (name: String, host: String, por
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Connect") }
             OutlinedButton(
-                onClick = { Toast.makeText(context, "QR scanning coming soon", Toast.LENGTH_SHORT).show() },
+                onClick = {
+                    val options = GmsBarcodeScannerOptions.Builder()
+                        .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                        .build()
+                    GmsBarcodeScanning.getClient(context, options).startScan()
+                        .addOnSuccessListener { vm.handlePairingLink(it.rawValue.orEmpty()) }
+                        .addOnFailureListener {
+                            Toast.makeText(context, it.message ?: "QR scan failed", Toast.LENGTH_LONG).show()
+                        }
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.QrCodeScanner, contentDescription = null, Modifier.padding(end = 8.dp))

@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +37,7 @@ import com.example.wandremote.ui.screens.debug.SensorDebugScreen
 import com.example.wandremote.ui.screens.pointer.PointerScreen
 import com.example.wandremote.ui.screens.presenter.PresenterScreen
 import com.example.wandremote.ui.screens.settings.SettingsScreen
-import com.example.wandremote.ui.screens.threed.ThreeDScreen
+import com.example.wandremote.ui.screens.config.ConfigScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,6 +51,17 @@ fun WandRemoteApp() {
     val isMode = ModeDestination.entries.any { it.route == route }
     val showBars = route != null && route != Routes.CONNECT
     var menuOpen by remember { mutableStateOf(false) }
+
+    val pairing by vm.pendingPairing.collectAsState()
+    LaunchedEffect(pairing) {
+        val info = pairing ?: return@LaunchedEffect
+        vm.consumePairing()
+        vm.connect("PC (${info.host})", info.host, info.udpPort)
+        navController.navigate(Routes.POINTER) {
+            popUpTo(navController.graph.id) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
 
     fun openSecondary(target: String) {
         menuOpen = false
@@ -127,7 +139,7 @@ fun WandRemoteApp() {
                 })
             }
             composable(Routes.POINTER) { PointerScreen(vm) }
-            composable(Routes.THREE_D) { ThreeDScreen() }
+            composable(Routes.CONFIG) { ConfigScreen() }
             composable(Routes.PRESENTER) { PresenterScreen() }
             composable(Routes.CALIBRATION) { CalibrationScreen() }
             composable(Routes.SETTINGS) { SettingsScreen() }
