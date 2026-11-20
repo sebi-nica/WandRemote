@@ -129,15 +129,7 @@ fun CalibrationScreen(vm: WandViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        SectionCard("Screen corners") {
-            Text("Point at each screen corner and press the button.", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "Coming with Presenter mode. Corner calibrations will be saved as a profile per PC.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(onClick = {}, enabled = false) { Text("Start") }
-        }
+        CornerCalibrationCard(vm)
 
         SectionCard("Gyroscope bias") {
             Text(

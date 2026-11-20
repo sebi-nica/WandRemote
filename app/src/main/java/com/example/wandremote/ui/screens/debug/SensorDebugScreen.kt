@@ -2,6 +2,7 @@ package com.example.wandremote.ui.screens.debug
 
 import android.hardware.Sensor
 import androidx.compose.foundation.Canvas
+import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.example.wandremote.shared.Gesture
+import java.util.Date
+import kotlin.math.roundToInt
 import com.example.wandremote.WandViewModel
 import com.example.wandremote.network.ConnectionState
 import com.example.wandremote.sensors.ChannelSnapshot
@@ -57,6 +61,7 @@ fun SensorDebugScreen(vm: WandViewModel) {
     val context = LocalContext.current
     val settings by vm.settings.collectAsState()
     val connection by vm.connectionState.collectAsState()
+    val gestures by vm.presenter.gestures.collectAsState()
     val monitor = remember {
         SensorMonitor(
             context,
@@ -131,11 +136,22 @@ fun SensorDebugScreen(vm: WandViewModel) {
         }
 
         SectionCard("Detected gestures") {
-            Text(
-                "Gesture detection arrives with Presenter mode.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (gestures.isEmpty()) {
+                Text(
+                    "None yet. Open Presenter mode and flick the phone left or right.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            for (g in gestures) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        DateFormat.getTimeFormat(context).format(Date(g.timeMs)) + "  " + gestureLabel(g.gesture),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text("confidence ${(g.confidence * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         }
 
         SectionCard("Network") {
@@ -143,6 +159,14 @@ fun SensorDebugScreen(vm: WandViewModel) {
             Text("Latency: ${latencyText(connection)}")
         }
     }
+}
+
+private fun gestureLabel(g: Gesture): String = when (g) {
+    Gesture.FLICK_LEFT -> "Flick left"
+    Gesture.FLICK_RIGHT -> "Flick right"
+    Gesture.BACK_TAP -> "Back tap"
+    Gesture.DOUBLE_BACK_TAP -> "Double back tap"
+    Gesture.SHAKE -> "Shake"
 }
 
 private fun latencyText(state: ConnectionState): String = when (state) {

@@ -1,6 +1,7 @@
 package com.example.wandremote.desktop
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +20,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.example.wandremote.desktop.network.Server
 import com.example.wandremote.desktop.ui.StatusWindow
 import com.example.wandremote.desktop.ui.overlay.LaserOverlay
+import com.example.wandremote.desktop.ui.viewer.ViewerWindow
 import com.example.wandremote.desktop.ui.theme.WandRemoteTheme
 
 /** Simple tray icon: a purple disc with a white dot. */
@@ -41,6 +43,11 @@ fun main() = application {
         onDispose { server.stop() }
     }
 
+    // Open the built-in 3D viewer whenever the phone enters 3D mode (the user may close it afterwards).
+    LaunchedEffect(state.mode, state.viewerBackend) {
+        if (state.mode == ControlMode.THREE_D && state.viewerBackend == ViewerBackend.BUILT_IN) state.viewerOpen = true
+    }
+
     Tray(
         icon = TrayIconPainter,
         tooltip = "WandRemote",
@@ -48,6 +55,7 @@ fun main() = application {
         menu = {
             Item("Show window", onClick = { windowVisible = true })
             Item("Toggle laser overlay (test)", onClick = { state.laserVisible = !state.laserVisible })
+            Item("3D viewer", onClick = { state.viewerOpen = true })
             Separator()
             Item("Quit", onClick = { server.stop(); exitApplication() })
         },
@@ -63,4 +71,5 @@ fun main() = application {
     }
 
     WandRemoteTheme { LaserOverlay(state) }
+    ViewerWindow(state)
 }

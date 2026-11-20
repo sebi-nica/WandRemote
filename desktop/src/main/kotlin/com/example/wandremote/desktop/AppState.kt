@@ -22,6 +22,10 @@ class AppState {
     var serverError by mutableStateOf<String?>(null)
     /** Latest phone orientation quaternion (w, x, y, z). */
     var orientation by mutableStateOf(floatArrayOf(1f, 0f, 0f, 0f))
+    /** 3D viewer zoom factor (1 = default), accumulated from Zoom packets. */
+    var zoom by mutableStateOf(1f)
+    /** Whether the separate "WandRemote 3D" window is open. */
+    var viewerOpen by mutableStateOf(false)
     val localIp: String = findLocalIpv4()
 
     var laserVisible by mutableStateOf(false)

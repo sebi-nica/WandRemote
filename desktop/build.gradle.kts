@@ -16,6 +16,11 @@ dependencies {
     implementation(libs.compose.desktop.material3)
     implementation(libs.compose.desktop.material.icons.extended)
     implementation(libs.zxing.core)
+    testImplementation(kotlin("test"))
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 compose.desktop {

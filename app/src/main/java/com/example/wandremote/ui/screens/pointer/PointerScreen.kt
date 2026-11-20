@@ -49,6 +49,7 @@ import com.example.wandremote.sensors.SensorHub
 import com.example.wandremote.sensors.VolumeKeys
 import com.example.wandremote.shared.MouseButton
 import com.example.wandremote.shared.Packet
+import com.example.wandremote.shared.RemoteMode
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.floor
@@ -103,6 +104,7 @@ fun PointerScreen(vm: WandViewModel) {
     // Gyro only while this screen is resumed. Movement always starts OFF.
     LifecycleResumeEffect(vm) {
         setMovement(false)
+        vm.setMode(RemoteMode.POINTER)
         session = vm.sensors.openPointer(onMove = { dx, dy -> vm.output.send(Packet.Move(dx, dy)) })
         onPauseOrDispose {
             session?.close()

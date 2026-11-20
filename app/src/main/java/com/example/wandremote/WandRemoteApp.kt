@@ -38,6 +38,7 @@ import com.example.wandremote.ui.screens.debug.SensorDebugScreen
 import com.example.wandremote.ui.screens.pointer.PointerScreen
 import com.example.wandremote.ui.screens.presenter.PresenterScreen
 import com.example.wandremote.ui.screens.settings.SettingsScreen
+import com.example.wandremote.ui.screens.threed.ThreeDScreen
 import com.example.wandremote.ui.screens.config.ConfigScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -151,7 +152,8 @@ fun WandRemoteApp() {
             }
             composable(Routes.POINTER) { PointerScreen(vm) }
             composable(Routes.CONFIG) { ConfigScreen(vm) }
-            composable(Routes.PRESENTER) { PresenterScreen() }
+            composable(Routes.PRESENTER) { PresenterScreen(vm) }
+            composable(Routes.THREE_D) { ThreeDScreen(vm) }
             composable(Routes.CALIBRATION) { CalibrationScreen(vm) }
             composable(Routes.SETTINGS) { SettingsScreen(vm) }
             composable(Routes.DEBUG) { SensorDebugScreen(vm) }

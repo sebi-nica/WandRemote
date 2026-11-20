@@ -31,6 +31,19 @@ class Haptics(context: Context) {
         vibrator.vibrate(VibrationEffect.createOneShot(ms, amplitude))
     }
 
+    /** Three long buzzes, used by the presenter timer. */
+    fun alert() {
+        if (strength <= 0f || !vibrator.hasVibrator()) return
+        val timings = longArrayOf(0, 400, 200, 400, 200, 400)
+        val effect = if (vibrator.hasAmplitudeControl()) {
+            val a = amplitudeFor(strength)
+            VibrationEffect.createWaveform(timings, intArrayOf(0, a, 0, a, 0, a), -1)
+        } else {
+            VibrationEffect.createWaveform(timings, -1)
+        }
+        vibrator.vibrate(effect)
+    }
+
     /** The system's light detent tick (used per scroll notch). */
     fun tick(view: View) {
         if (strength > 0f) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)

@@ -1,6 +1,19 @@
 package com.example.wandremote.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -94,5 +107,59 @@ fun LabeledSlider(
             valueRange = valueRange,
             onValueChangeFinished = onValueChangeFinished,
         )
+    }
+}
+
+/**
+ * A button that reacts the moment the finger touches down (and again on release), unlike a click which fires on
+ * release. Used where timing matters: "hold for laser" and "aim, then tap" captures.
+ */
+@Composable
+fun TouchDownButton(
+    text: String,
+    onDown: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tonal: Boolean = false,
+    onUp: () -> Unit = {},
+) {
+    val down by rememberUpdatedState(onDown)
+    val up by rememberUpdatedState(onUp)
+    var pressed by remember { mutableStateOf(false) }
+    val scheme = MaterialTheme.colorScheme
+    val container = when {
+        !enabled -> scheme.onSurface.copy(alpha = 0.12f)
+        pressed -> scheme.tertiary
+        tonal -> scheme.secondaryContainer
+        else -> scheme.primary
+    }
+    val content = when {
+        !enabled -> scheme.onSurface.copy(alpha = 0.38f)
+        pressed -> scheme.onTertiary
+        tonal -> scheme.onSecondaryContainer
+        else -> scheme.onPrimary
+    }
+    Surface(
+        modifier = if (enabled) {
+            modifier.pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown()
+                    pressed = true
+                    down()
+                    waitForUpOrCancellation()
+                    pressed = false
+                    up()
+                }
+            }
+        } else {
+            modifier
+        },
+        shape = RoundedCornerShape(20.dp),
+        color = container,
+        contentColor = content,
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        }
     }
 }

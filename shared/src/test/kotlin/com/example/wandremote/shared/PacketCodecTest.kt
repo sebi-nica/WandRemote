@@ -19,6 +19,9 @@ class PacketCodecTest {
         Packet.Hello("Pixel 8"),
         Packet.Hello(""),
         Packet.Bye,
+        Packet.SetMode(RemoteMode.PRESENTER),
+        Packet.SetMode(RemoteMode.THREE_D),
+        Packet.Zoom(-0.5f),
     )
 
     @Test

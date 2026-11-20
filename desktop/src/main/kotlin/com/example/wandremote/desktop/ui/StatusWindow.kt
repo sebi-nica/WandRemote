@@ -1,7 +1,6 @@
 package com.example.wandremote.desktop.ui
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,14 +40,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -56,12 +53,12 @@ import androidx.compose.ui.unit.dp
 import com.example.wandremote.desktop.AppState
 import com.example.wandremote.desktop.SHORTCUT_OPTIONS
 import com.example.wandremote.desktop.ViewerBackend
+import com.example.wandremote.desktop.ui.viewer.Viewer3D
+import com.example.wandremote.desktop.ui.viewer.ViewerControls
 import com.example.wandremote.shared.Gesture
 import com.example.wandremote.shared.Protocol
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
-import kotlin.math.cos
-import kotlin.math.sin
 
 private enum class Section(val label: String, val icon: ImageVector) {
     STATUS("Status", Icons.Filled.Dashboard),
@@ -197,41 +194,20 @@ private fun ViewerSection(state: AppState) {
             }
         }
     }
-    WireframeCube(Modifier.fillMaxWidth().height(300.dp))
-}
-
-@Composable
-private fun WireframeCube(modifier: Modifier) {
-    var angle by remember { mutableStateOf(0f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            androidx.compose.runtime.withFrameNanos { angle = (it / 1_000_000_000f) * 0.8f }
-        }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(onClick = { state.viewerOpen = true }) { Text("Open 3D viewer window") }
+        Text(
+            if (state.viewerBackend == ViewerBackend.BLENDER) {
+                "Blender emulation: orientation orbits with the middle mouse button, zoom scrolls the wheel."
+            } else {
+                "Mode: ${state.mode.label}"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
-    val color = MaterialTheme.colorScheme.primary
-    Canvas(modifier) {
-        val scale = size.minDimension * 0.28f
-        val center = Offset(size.width / 2, size.height / 2)
-        val verts = List(8) { i ->
-            Triple(if (i and 1 == 0) -1f else 1f, if (i and 2 == 0) -1f else 1f, if (i and 4 == 0) -1f else 1f)
-        }
-        val projected = verts.map { (x, y, z) ->
-            // rotate around Y then X, then simple perspective projection
-            val x1 = x * cos(angle) + z * sin(angle)
-            val z1 = -x * sin(angle) + z * cos(angle)
-            val tilt = 0.5f
-            val y2 = y * cos(tilt) - z1 * sin(tilt)
-            val z2 = y * sin(tilt) + z1 * cos(tilt)
-            val persp = 4f / (4f + z2)
-            Offset(center.x + x1 * scale * persp, center.y + y2 * scale * persp)
-        }
-        for (a in 0 until 8) for (b in a + 1 until 8) {
-            // edges connect vertices differing in exactly one bit
-            if (Integer.bitCount(a xor b) == 1) {
-                drawLine(color, projected[a], projected[b], strokeWidth = 3f)
-            }
-        }
-    }
+    Viewer3D(state, Modifier.fillMaxWidth().height(300.dp))
+    ViewerControls(state)
 }
 
 @Composable

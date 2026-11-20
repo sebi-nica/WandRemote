@@ -15,7 +15,9 @@ enum class PacketType(val id: Byte) {
     PING(8),
     PONG(9),
     HELLO(10),
-    BYE(11);
+    BYE(11),
+    SET_MODE(12),
+    ZOOM(13);
 
     companion object {
         private val byId = entries.associateBy { it.id }
@@ -36,6 +38,15 @@ enum class Gesture(val id: Byte) {
 
     companion object {
         fun fromId(id: Byte): Gesture? = entries.firstOrNull { it.id == id }
+    }
+}
+
+/** Which control mode the phone is in; the PC adapts how it treats incoming packets. */
+enum class RemoteMode(val id: Byte) {
+    POINTER(0), PRESENTER(1), THREE_D(2);
+
+    companion object {
+        fun fromId(id: Byte): RemoteMode? = entries.firstOrNull { it.id == id }
     }
 }
 
@@ -71,6 +82,12 @@ sealed class Packet(val type: PacketType) {
 
     /** Sent by the phone when it disconnects. */
     data object Bye : Packet(PacketType.BYE)
+
+    /** Sent by the phone when the user switches mode (and with each Hello, so the PC stays in sync). */
+    data class SetMode(val mode: RemoteMode) : Packet(PacketType.SET_MODE)
+
+    /** 3D mode zoom: positive = zoom in, in arbitrary steps (fractional allowed). */
+    data class Zoom(val amount: Float) : Packet(PacketType.ZOOM)
 }
 
 /** Binary encoding: [MAGIC][type][payload...], little-endian. */
@@ -96,6 +113,8 @@ object PacketCodec {
                 buf.put(bytes.size.toByte()).put(bytes)
             }
             Packet.Bye -> Unit
+            is Packet.SetMode -> buf.put(packet.mode.id)
+            is Packet.Zoom -> buf.putFloat(packet.amount)
         }
         return buf.array().copyOf(buf.position())
     }
@@ -124,6 +143,8 @@ object PacketCodec {
                     Packet.Hello(String(bytes, Charsets.UTF_8))
                 }
                 PacketType.BYE -> Packet.Bye
+                PacketType.SET_MODE -> Packet.SetMode(RemoteMode.fromId(buf.get()) ?: return null)
+                PacketType.ZOOM -> Packet.Zoom(buf.float)
             }
         } catch (e: java.nio.BufferUnderflowException) {
             null

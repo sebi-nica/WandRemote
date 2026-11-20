@@ -11,6 +11,11 @@ import com.example.wandremote.network.ConnectionState
 import com.example.wandremote.network.PacketSink
 import com.example.wandremote.network.RecentPc
 import com.example.wandremote.network.RecentPcs
+import com.example.wandremote.presenter.CalibrationProfile
+import com.example.wandremote.presenter.CalibrationStore
+import com.example.wandremote.presenter.PresenterController
+import com.example.wandremote.sensors.AimSensor
+import com.example.wandremote.sensors.ScreenCalibration
 import com.example.wandremote.sensors.SensorHub
 import com.example.wandremote.settings.AppSettings
 import com.example.wandremote.settings.SettingsRepository
@@ -18,6 +23,11 @@ import com.example.wandremote.ui.Haptics
 import com.example.wandremote.shared.Packet
 import com.example.wandremote.shared.PairingInfo
 import com.example.wandremote.shared.Protocol
+import com.example.wandremote.shared.RemoteMode
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -108,6 +118,60 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
 
     fun consumePairing() {
         _pendingPairing.value = null
+    }
+
+    // ---- Presenter mode ----
+
+    val aim = AimSensor(app)
+    private val calibrationStore = CalibrationStore(app)
+
+    /** Calibration profile key: the connected Wi-Fi host, or "default" when there is none. */
+    val profileKey: StateFlow<String> = connectionState
+        .map { (it as? ConnectionState.Connected)?.host ?: CalibrationStore.DEFAULT_KEY }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, CalibrationStore.DEFAULT_KEY)
+
+    /** The corner calibration for [profileKey], if one was saved. */
+    val calibrationProfile: StateFlow<CalibrationProfile?> =
+        combine(profileKey, calibrationStore.profiles) { key, all -> all[key] }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun saveCalibration(calibration: ScreenCalibration) =
+        calibrationStore.save(profileKey.value, CalibrationProfile(calibration, System.currentTimeMillis()))
+
+    fun deleteCalibration() = calibrationStore.delete(profileKey.value)
+
+    private var currentMode = RemoteMode.POINTER
+
+    /** Tells the PC which mode the phone is in; remembered and re-sent after every (re)connect. */
+    fun setMode(mode: RemoteMode) {
+        currentMode = mode
+        output.send(Packet.SetMode(mode))
+    }
+
+    val presenter = PresenterController(
+        context = app,
+        aimSensor = aim,
+        output = output,
+        haptics = haptics,
+        setMode = ::setMode,
+        gyroBias = { settings.value.gyroBias },
+        calibration = { calibrationProfile.value?.calibration },
+        updateCalibration = { cal ->
+            val saved = calibrationProfile.value?.savedAtMs ?: System.currentTimeMillis()
+            calibrationStore.save(profileKey.value, CalibrationProfile(cal, saved))
+        },
+    )
+
+    init {
+        connectionState
+            .map { (it as? ConnectionState.Connected)?.let { c -> c.host to c.port } }
+            .distinctUntilChanged()
+            .filterNotNull()
+            .onEach {
+                delay(300) // let the new session start its sender
+                output.send(Packet.SetMode(currentMode))
+            }
+            .launchIn(viewModelScope)
     }
 
     override fun onCleared() {

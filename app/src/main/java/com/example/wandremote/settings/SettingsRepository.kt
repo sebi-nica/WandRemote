@@ -38,6 +38,7 @@ class SettingsRepository(context: Context) {
                 prefs.getFloat(BIAS_Z, 0f),
             ),
             gyroBiasTimeMs = prefs.getLong(BIAS_TIME, 0L),
+            presenterAlertMinutes = prefs.getInt(ALERT_MINUTES, d.presenterAlertMinutes),
         ).coerced()
     }
 
@@ -56,6 +57,7 @@ class SettingsRepository(context: Context) {
             .putFloat(BIAS_Y, s.gyroBias.y)
             .putFloat(BIAS_Z, s.gyroBias.z)
             .putLong(BIAS_TIME, s.gyroBiasTimeMs)
+            .putInt(ALERT_MINUTES, s.presenterAlertMinutes)
             .apply()
     }
 
@@ -74,5 +76,6 @@ class SettingsRepository(context: Context) {
         const val BIAS_Y = "gyro_bias_y"
         const val BIAS_Z = "gyro_bias_z"
         const val BIAS_TIME = "gyro_bias_time_ms"
+        const val ALERT_MINUTES = "presenter_alert_minutes"
     }
 }

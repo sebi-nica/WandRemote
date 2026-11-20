@@ -23,6 +23,8 @@ data class AppSettings(
     val gyroBias: GyroBias = GyroBias.ZERO,
     /** Epoch millis of the last gyro bias calibration, 0 if never. */
     val gyroBiasTimeMs: Long = 0L,
+    /** Presenter timer vibrates when this many minutes have elapsed (0 = no alert). */
+    val presenterAlertMinutes: Int = DEFAULT_ALERT_MINUTES,
 ) {
     fun coerced() = copy(
         sensitivity = sensitivity.coerceIn(SENSITIVITY_RANGE),
@@ -32,6 +34,7 @@ data class AppSettings(
         scrollDegreesPerNotch = scrollDegreesPerNotch.coerceIn(DEGREES_PER_NOTCH_RANGE),
         knobSizeFraction = knobSizeFraction.coerceIn(KNOB_FRACTION_RANGE),
         vibrationStrength = vibrationStrength.coerceIn(0f, 1f),
+        presenterAlertMinutes = presenterAlertMinutes.coerceIn(0, 999),
     )
 
     fun toPointerTuning() = PointerTuning(
@@ -60,6 +63,7 @@ data class AppSettings(
         const val DEFAULT_DEGREES_PER_NOTCH = 24f
         const val DEFAULT_KNOB_FRACTION = 0.20f
         const val DEFAULT_VIBRATION = 0.7f
+        const val DEFAULT_ALERT_MINUTES = 10
 
         val SENSITIVITY_RANGE = 0.25f..3f
         val ACCELERATION_RANGE = 0f..1.5f
