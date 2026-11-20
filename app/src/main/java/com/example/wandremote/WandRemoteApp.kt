@@ -30,6 +30,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.wandremote.navigation.ModeDestination
 import com.example.wandremote.navigation.Routes
+import com.example.wandremote.network.ConnectionState
 import com.example.wandremote.ui.components.ConnectionStatusChip
 import com.example.wandremote.ui.screens.calibration.CalibrationScreen
 import com.example.wandremote.ui.screens.connect.ConnectScreen
@@ -44,8 +45,8 @@ import com.example.wandremote.ui.screens.config.ConfigScreen
 fun WandRemoteApp() {
     val navController = rememberNavController()
     val vm: WandViewModel = viewModel()
-    val connectionManager = vm.connection
-    val connection by connectionManager.state.collectAsState()
+
+    val connection by vm.connectionState.collectAsState()
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
     val isMode = ModeDestination.entries.any { it.route == route }
@@ -63,6 +64,16 @@ fun WandRemoteApp() {
         }
     }
 
+    // A PC connected to our Bluetooth mouse (e.g. Windows right after pairing): jump to the pointer.
+    val btConnected = connection is ConnectionState.ConnectedBluetooth
+    LaunchedEffect(btConnected, route) {
+        if (btConnected && route == Routes.CONNECT) {
+            navController.navigate(Routes.POINTER) {
+                popUpTo(Routes.CONNECT) { inclusive = true }
+            }
+        }
+    }
+
     fun openSecondary(target: String) {
         menuOpen = false
         navController.navigate(target) { launchSingleTop = true }
@@ -70,7 +81,7 @@ fun WandRemoteApp() {
 
     fun disconnect() {
         menuOpen = false
-        connectionManager.disconnect()
+        vm.disconnect()
         navController.navigate(Routes.CONNECT) {
             popUpTo(navController.graph.id) { inclusive = true }
             launchSingleTop = true
@@ -139,11 +150,11 @@ fun WandRemoteApp() {
                 })
             }
             composable(Routes.POINTER) { PointerScreen(vm) }
-            composable(Routes.CONFIG) { ConfigScreen() }
+            composable(Routes.CONFIG) { ConfigScreen(vm) }
             composable(Routes.PRESENTER) { PresenterScreen() }
-            composable(Routes.CALIBRATION) { CalibrationScreen() }
-            composable(Routes.SETTINGS) { SettingsScreen() }
-            composable(Routes.DEBUG) { SensorDebugScreen(connection) }
+            composable(Routes.CALIBRATION) { CalibrationScreen(vm) }
+            composable(Routes.SETTINGS) { SettingsScreen(vm) }
+            composable(Routes.DEBUG) { SensorDebugScreen(vm) }
         }
     }
 }

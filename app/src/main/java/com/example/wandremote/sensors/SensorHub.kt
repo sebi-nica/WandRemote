@@ -5,86 +5,87 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import kotlin.math.hypot
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Tunables for relative pointing. Defaults: ~30 degrees of wrist turn at moderate speed ~= 1920 px. */
 data class PointerTuning(
     /** Pixels per radian at low speed. */
-    val baseSensitivity: Float = 2500f,
+    val baseSensitivity: Float = BASE_SENSITIVITY,
     /** gain = base * (1 + acceleration * |omega|), omega in rad/s. */
     val acceleration: Float = 0.4f,
     /** Angular speeds below this (rad/s) are ignored. */
     val deadZone: Float = 0.02f,
     /** Exponential smoothing factor per sample (1 = no smoothing). */
     val smoothing: Float = 0.6f,
-)
+) {
+    companion object {
+        const val BASE_SENSITIVITY = 2500f
+    }
+}
 
-/** Wraps SensorManager. Register only while the Pointer screen is visible. */
+/**
+ * Wraps the gyroscope for the pointer pipeline. Every screen that wants pointer movement opens its own
+ * [PointerSession]; the sensor is registered while at least one session is open.
+ */
 class SensorHub(context: Context) {
     private val sm = context.applicationContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val gyro: Sensor? = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
 
     val hasGyroscope: Boolean get() = gyro != null
 
+    /** Read live on every sample, so changes apply immediately. */
     @Volatile var tuning = PointerTuning()
 
-    /** Set from the UI: the movement toggle. Gyro motion is only sent while true. */
-    @Volatile var movementEnabled = false
+    /** Subtracted from every gyro sample before the pipeline. */
+    @Volatile var gyroBias = GyroBias.ZERO
 
-    private var onMove: ((Float, Float) -> Unit)? = null
-
-    private var lastTs = 0L
-    private var smX = 0f
-    private var smY = 0f
+    private val sessions = CopyOnWriteArrayList<PointerSession>()
 
     private val listener = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) {
-            if (e.sensor.type == Sensor.TYPE_GYROSCOPE) handleGyro(e)
+            for (session in sessions) session.onGyro(e)
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
 
-    /** Callbacks run on the main thread (default sensor handler); [onMove] gets pixel deltas. */
-    fun startPointer(onMove: (dx: Float, dy: Float) -> Unit) {
-        this.onMove = onMove
-        lastTs = 0L
-        smX = 0f
-        smY = 0f
-        gyro?.let { sm.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+    /** Starts delivering pixel deltas to [onMove] on the main thread. Close the session when the screen pauses. */
+    fun openPointer(onMove: (dx: Float, dy: Float) -> Unit): PointerSession {
+        val session = PointerSession(onMove)
+        if (sessions.isEmpty()) gyro?.let { sm.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+        sessions.add(session)
+        return session
     }
 
-    fun stopPointer() {
-        sm.unregisterListener(listener)
-        onMove = null
-        movementEnabled = false
+    inner class PointerSession internal constructor(private val onMove: (Float, Float) -> Unit) {
+        /** Gyro motion is only reported while true. Starts off. */
+        @Volatile var movementEnabled = false
+            set(value) {
+                field = value
+                if (!value) pipeline.reset()
+            }
+
+        private val pipeline = PointerPipeline()
+        private var lastTs = 0L
+
+        internal fun onGyro(e: SensorEvent) {
+            val dtNs = if (lastTs == 0L) 0L else e.timestamp - lastTs
+            lastTs = e.timestamp
+            if (!movementEnabled || dtNs <= 0L || dtNs > MAX_DT_NS) return
+            val bias = gyroBias
+            // Phone portrait, screen up, pointing forward: yaw = about Z (horizontal), pitch = about X (vertical).
+            val wx = -(e.values[2] - bias.z)
+            val wy = -(e.values[0] - bias.x)
+            pipeline.step(wx, wy, dtNs / 1e9f, tuning)?.let { onMove(it.dx, it.dy) }
+        }
+
+        fun close() {
+            movementEnabled = false
+            if (sessions.remove(this) && sessions.isEmpty()) sm.unregisterListener(listener)
+        }
     }
 
-    private fun handleGyro(e: SensorEvent) {
-        val t = tuning
-        val dtNs = if (lastTs == 0L) 0L else e.timestamp - lastTs
-        lastTs = e.timestamp
-        if (!movementEnabled) {
-            smX = 0f
-            smY = 0f
-            return
-        }
-        if (dtNs <= 0L || dtNs > 200_000_000L) return
-        val dt = dtNs / 1e9f
-
-        // Phone portrait, screen up, pointing forward: yaw = about Z (horizontal), pitch = about X (vertical).
-        val wx = -e.values[2]
-        val wy = -e.values[0]
-        if (hypot(wx, wy) < t.deadZone) {
-            smX = 0f
-            smY = 0f
-            return
-        }
-        smX += t.smoothing * (wx - smX)
-        smY += t.smoothing * (wy - smY)
-        val gain = t.baseSensitivity * (1f + t.acceleration * hypot(smX, smY))
-        val dx = smX * dt * gain
-        val dy = smY * dt * gain
-        if (dx != 0f || dy != 0f) onMove?.invoke(dx, dy)
+    private companion object {
+        const val MAX_DT_NS = 200_000_000L
     }
 }

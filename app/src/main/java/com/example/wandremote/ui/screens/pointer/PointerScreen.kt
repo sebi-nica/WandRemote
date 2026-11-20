@@ -1,11 +1,5 @@
 package com.example.wandremote.ui.screens.pointer
 
-import android.content.Context
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
-import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -44,7 +38,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntOffset
@@ -52,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.example.wandremote.WandViewModel
 import com.example.wandremote.network.ConnectionState
+import com.example.wandremote.sensors.SensorHub
 import com.example.wandremote.sensors.VolumeKeys
 import com.example.wandremote.shared.MouseButton
 import com.example.wandremote.shared.Packet
@@ -62,12 +56,6 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** One scroll notch per this many degrees of knob rotation. */
-private const val DEGREES_PER_NOTCH = 24f
-
-/** Knob radius as a fraction of the content width. */
-private const val KNOB_RADIUS_FRACTION = 0.20f
-
 private val EDGE_PADDING = 12.dp
 private val TOGGLE_RADIUS = 30.dp
 
@@ -75,17 +63,8 @@ private enum class Role { LEFT, RIGHT, KNOB }
 
 private class Geo(val cx: Float, val cy: Float, val knobR: Float, val ringIn: Float, val ringOut: Float)
 
-private fun vibrate(context: Context, ms: Long) {
-    val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
-    } else {
-        @Suppress("DEPRECATION")
-        context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-    }
-    if (vibrator.hasVibrator()) {
-        vibrator.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
-    }
-}
+private fun labelAngle(deg: Double, leftHanded: Boolean): Double =
+    if (leftHanded) mirrorAngle(deg.toFloat()).toDouble() else deg
 
 /** Screen angle of (x, y) around the center in degrees, 0 = east, clockwise positive, [0, 360). */
 private fun angleDeg(x: Float, y: Float, g: Geo): Float {
@@ -95,36 +74,40 @@ private fun angleDeg(x: Float, y: Float, g: Geo): Float {
 
 @Composable
 fun PointerScreen(vm: WandViewModel) {
-    val context = LocalContext.current
     val view = LocalView.current
-    val connection by vm.connection.state.collectAsState()
-    val isConnected = connection is ConnectionState.Connected
+    val settings by vm.settings.collectAsState()
+    val leftHanded = settings.leftHanded
+    val haptics = vm.haptics
+    val connection by vm.connectionState.collectAsState()
+    val isConnected = connection is ConnectionState.Connected || connection is ConnectionState.ConnectedBluetooth
 
     var movementOn by remember { mutableStateOf(false) }
     var leftDown by remember { mutableStateOf(false) }
     var rightDown by remember { mutableStateOf(false) }
     var knobAngle by remember { mutableFloatStateOf(0f) } // degrees, accumulated, drawn rotation
+    var session by remember { mutableStateOf<SensorHub.PointerSession?>(null) }
 
     fun setButton(button: MouseButton, pressed: Boolean) {
         val left = button == MouseButton.LEFT
         if ((if (left) leftDown else rightDown) == pressed) return
         if (left) leftDown = pressed else rightDown = pressed
-        vm.connection.send(Packet.Button(button, pressed))
-        if (pressed) vibrate(context, 20)
+        vm.output.send(Packet.Button(button, pressed))
+        if (pressed) haptics.pulse(20)
     }
 
     fun setMovement(on: Boolean) {
         movementOn = on
-        vm.sensors.movementEnabled = on
+        session?.movementEnabled = on
     }
 
     // Gyro only while this screen is resumed. Movement always starts OFF.
     LifecycleResumeEffect(vm) {
         setMovement(false)
-        vm.sensors.startPointer(onMove = { dx, dy -> vm.connection.send(Packet.Move(dx, dy)) })
+        session = vm.sensors.openPointer(onMove = { dx, dy -> vm.output.send(Packet.Move(dx, dy)) })
         onPauseOrDispose {
-            vm.sensors.stopPointer()
-            setMovement(false)
+            session?.close()
+            session = null
+            movementOn = false
             // Never leave a button stuck down on the PC.
             setButton(MouseButton.LEFT, false)
             setButton(MouseButton.RIGHT, false)
@@ -142,13 +125,13 @@ fun PointerScreen(vm: WandViewModel) {
     }
 
     val onButton by rememberUpdatedState<(MouseButton, Boolean) -> Unit> { b, p -> setButton(b, p) }
+    val degreesPerNotch by rememberUpdatedState(settings.scrollDegreesPerNotch)
     val onKnobTurn by rememberUpdatedState<(Float) -> Unit> { deltaDeg ->
         knobAngle += deltaDeg
-        vm.connection.send(Packet.Scroll(0f, deltaDeg / DEGREES_PER_NOTCH))
+        val notches = deltaDeg / degreesPerNotch
+        vm.output.send(Packet.Scroll(0f, if (settings.invertScroll) -notches else notches))
     }
-    val onTick by rememberUpdatedState<() -> Unit> {
-        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-    }
+    val onTick by rememberUpdatedState<() -> Unit> { haptics.tick(view) }
 
     val scheme = MaterialTheme.colorScheme
 
@@ -156,11 +139,13 @@ fun PointerScreen(vm: WandViewModel) {
         val density = LocalDensity.current
         val wPx = with(density) { maxWidth.toPx() }
         val hPx = with(density) { maxHeight.toPx() }
-        val knobR = wPx * KNOB_RADIUS_FRACTION
+        val knobR = wPx * settings.knobSizeFraction
         val gap = with(density) { 8.dp.toPx() }
         val ringIn = knobR + gap
         val ringOut = ringIn + knobR
-        val geo = remember(wPx, hPx) { Geo(wPx - knobR, hPx - knobR, knobR, ringIn, ringOut) }
+        val geo = remember(wPx, hPx, knobR, leftHanded) {
+            Geo(clusterCenterX(wPx, knobR, leftHanded), hPx - knobR, knobR, ringIn, ringOut)
+        }
         val toggleR = with(density) { TOGGLE_RADIUS.toPx() }
 
         // Status text, top-left.
@@ -195,12 +180,16 @@ fun PointerScreen(vm: WandViewModel) {
                                         if (!c.changedToDown()) continue
                                         val dist = hypot(c.position.x - geo.cx, c.position.y - geo.cy)
                                         val ang = angleDeg(c.position.x, c.position.y, geo)
-                                        val newRole = when {
+                                        val hit = when {
                                             dist <= geo.ringIn -> Role.KNOB
-                                            dist <= geo.ringOut && ang in 170f..280f ->
-                                                if (ang < 225f) Role.LEFT else Role.RIGHT
+                                            dist <= geo.ringOut -> when (ringButtonAt(ang, leftHanded)) {
+                                                RingButton.LEFT -> Role.LEFT
+                                                RingButton.RIGHT -> Role.RIGHT
+                                                null -> null
+                                            }
                                             else -> null
-                                        } ?: continue
+                                        }
+                                        val newRole = hit ?: continue
                                         roles[c.id] = newRole
                                         c.consume()
                                         when (newRole) {
@@ -227,7 +216,7 @@ fun PointerScreen(vm: WandViewModel) {
                                             // Screen angles grow clockwise, so d > 0 = clockwise = scroll down.
                                             onKnobTurn(d)
                                             val before = floor(notchPos)
-                                            notchPos += d / DEGREES_PER_NOTCH
+                                            notchPos += d / degreesPerNotch
                                             if (floor(notchPos) != before) onTick()
                                         }
                                         c.consume()
@@ -249,24 +238,25 @@ fun PointerScreen(vm: WandViewModel) {
             val mid = (geo.ringIn + geo.ringOut) / 2f
             val arcTopLeft = Offset(geo.cx - mid, geo.cy - mid)
             val arcSize = Size(mid * 2, mid * 2)
-            // Left = lower-left half (west .. diagonal), right = upper half (diagonal .. north).
+            // Left = half nearest the screen edge (west .. diagonal), right = upper half (diagonal .. north);
+            // mirrored when left-handed.
             drawArc(
                 color = if (leftDown) scheme.primary else scheme.secondaryContainer,
-                startAngle = 180f, sweepAngle = 43f, useCenter = false,
+                startAngle = arcStartAngle(180f, 43f, leftHanded), sweepAngle = 43f, useCenter = false,
                 topLeft = arcTopLeft, size = arcSize, style = Stroke(thickness),
             )
             drawArc(
                 color = if (rightDown) scheme.tertiary else scheme.tertiaryContainer,
-                startAngle = 227f, sweepAngle = 43f, useCenter = false,
+                startAngle = arcStartAngle(227f, 43f, leftHanded), sweepAngle = 43f, useCenter = false,
                 topLeft = arcTopLeft, size = arcSize, style = Stroke(thickness),
             )
 
             // Knob: body, outline, rotating tick marks and indicator dot.
             drawCircle(scheme.surfaceVariant, geo.knobR, center)
             drawCircle(scheme.outline, geo.knobR, center, style = Stroke(2.dp.toPx()))
-            val ticks = (360f / DEGREES_PER_NOTCH).roundToInt()
+            val ticks = (360f / degreesPerNotch).roundToInt()
             for (i in 0 until ticks) {
-                val a = Math.toRadians((knobAngle + i * DEGREES_PER_NOTCH).toDouble())
+                val a = Math.toRadians((knobAngle + i * degreesPerNotch).toDouble())
                 val c = cos(a).toFloat()
                 val s = sin(a).toFloat()
                 val start = Offset(geo.cx + c * geo.knobR * 0.80f, geo.cy + s * geo.knobR * 0.80f)
@@ -305,15 +295,15 @@ fun PointerScreen(vm: WandViewModel) {
                 },
             )
         }
-        RingLabel("L", 201.5, if (leftDown) scheme.onPrimary else scheme.onSecondaryContainer)
-        RingLabel("R", 248.5 - 2.0, if (rightDown) scheme.onTertiary else scheme.onTertiaryContainer)
+        RingLabel("L", labelAngle(201.5, leftHanded), if (leftDown) scheme.onPrimary else scheme.onSecondaryContainer)
+        RingLabel("R", labelAngle(246.5, leftHanded), if (rightDown) scheme.onTertiary else scheme.onTertiaryContainer)
 
-        // Movement toggle, above the ring near the right edge.
+        // Movement toggle, above the ring near the screen edge the cluster is on.
         Box(
             Modifier
                 .offset {
                     IntOffset(
-                        (wPx - toggleR * 2).roundToInt(),
+                        (if (leftHanded) 0f else wPx - toggleR * 2).roundToInt(),
                         (geo.cy - geo.ringOut - gap * 1.5f - toggleR * 2).roundToInt(),
                     )
                 }
@@ -322,7 +312,7 @@ fun PointerScreen(vm: WandViewModel) {
                 .background(if (movementOn) scheme.primary else scheme.surface)
                 .clickable {
                     setMovement(!movementOn)
-                    vibrate(context, 15)
+                    haptics.pulse(15)
                 },
             contentAlignment = Alignment.Center,
         ) {

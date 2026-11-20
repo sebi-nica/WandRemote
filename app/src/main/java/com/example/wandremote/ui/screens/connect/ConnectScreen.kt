@@ -87,6 +87,8 @@ fun ConnectScreen(vm: WandViewModel, onConnect: (name: String, host: String, por
             ) { Text("Rescan") }
         }
 
+        BluetoothSection(vm)
+
         SectionCard("Manual connection") {
             OutlinedTextField(
                 value = host,

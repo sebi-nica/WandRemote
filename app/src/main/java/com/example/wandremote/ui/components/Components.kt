@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -24,12 +27,14 @@ import com.example.wandremote.ui.theme.ConnectedGreen
 @Composable
 fun ConnectionStatusChip(state: ConnectionState, modifier: Modifier = Modifier) {
     val connected = state as? ConnectionState.Connected
+    val bluetooth = state as? ConnectionState.ConnectedBluetooth
     AssistChip(
         onClick = {},
         modifier = modifier,
         label = {
             Text(
                 when {
+                    bluetooth != null -> bluetooth.deviceName
                     connected == null -> "Offline"
                     connected.latencyMs < 0 -> "No response"
                     connected.latencyMs == 0 -> "..."
@@ -38,14 +43,18 @@ fun ConnectionStatusChip(state: ConnectionState, modifier: Modifier = Modifier) 
             )
         },
         leadingIcon = {
-            Box(
-                Modifier
-                    .size(10.dp)
-                    .background(
-                        if (connected != null && connected.latencyMs >= 0) ConnectedGreen else MaterialTheme.colorScheme.error,
-                        CircleShape,
-                    ),
-            )
+            if (bluetooth != null) {
+                Icon(Icons.Default.Bluetooth, contentDescription = null, Modifier.size(16.dp), tint = ConnectedGreen)
+            } else {
+                Box(
+                    Modifier
+                        .size(10.dp)
+                        .background(
+                            if (connected != null && connected.latencyMs >= 0) ConnectedGreen else MaterialTheme.colorScheme.error,
+                            CircleShape,
+                        ),
+                )
+            }
         },
     )
 }
@@ -67,6 +76,8 @@ fun LabeledSlider(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    valueText: (Float) -> String = { "%.2f".format(it) },
+    onValueChangeFinished: (() -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth()) {
         Row(
@@ -75,8 +86,13 @@ fun LabeledSlider(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(label, style = MaterialTheme.typography.bodyMedium)
-            Text("%.2f".format(value), style = MaterialTheme.typography.labelMedium)
+            Text(valueText(value), style = MaterialTheme.typography.labelMedium)
         }
-        Slider(value = value, onValueChange = onValueChange, valueRange = valueRange)
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            onValueChangeFinished = onValueChangeFinished,
+        )
     }
 }

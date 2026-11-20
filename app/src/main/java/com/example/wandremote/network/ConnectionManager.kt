@@ -28,6 +28,9 @@ import java.util.concurrent.atomic.AtomicLong
 sealed interface ConnectionState {
     data object Disconnected : ConnectionState
 
+    /** Connected as a Bluetooth HID mouse to [deviceName]; no latency measurement. */
+    data class ConnectedBluetooth(val deviceName: String) : ConnectionState
+
     /** [latencyMs]: round-trip in ms; [LATENCY_PENDING] before the first Pong; [LATENCY_NONE] when the PC stopped answering. */
     data class Connected(val host: String, val port: Int, val latencyMs: Int) : ConnectionState {
         companion object {
@@ -44,7 +47,7 @@ data class DiscoveredPc(val name: String, val ip: String, val udpPort: Int, val 
  * Outgoing packets go through a channel drained by one coroutine, so they stay ordered
  * and [send] never blocks the caller (e.g. a sensor callback).
  */
-class ConnectionManager(context: Context) {
+class ConnectionManager(context: Context) : PacketSink {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -204,7 +207,7 @@ class ConnectionManager(context: Context) {
     }
 
     /** Queues a packet; never blocks. No-op when not connected. */
-    fun send(packet: Packet) {
+    override fun send(packet: Packet) {
         session?.outbox?.trySend(packet)
     }
 
