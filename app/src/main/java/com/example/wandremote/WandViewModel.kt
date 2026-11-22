@@ -6,14 +6,19 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.wandremote.bluetooth.BluetoothHidMouse
 import com.example.wandremote.bluetooth.BluetoothHidState
+import com.example.wandremote.network.BluetoothLink
+import com.example.wandremote.network.BluetoothLinkState
 import com.example.wandremote.network.ConnectionManager
 import com.example.wandremote.network.ConnectionState
 import com.example.wandremote.network.PacketSink
 import com.example.wandremote.network.RecentPc
 import com.example.wandremote.network.RecentPcs
-import com.example.wandremote.presenter.CalibrationProfile
-import com.example.wandremote.presenter.CalibrationStore
-import com.example.wandremote.presenter.PresenterController
+import com.example.wandremote.network.calibrationKey
+import com.example.wandremote.network.companionSessionId
+import com.example.wandremote.network.mergeConnectionState
+import com.example.wandremote.pointer.CalibrationProfile
+import com.example.wandremote.pointer.CalibrationStore
+import com.example.wandremote.pointer.LaserController
 import com.example.wandremote.sensors.AimSensor
 import com.example.wandremote.sensors.ScreenCalibration
 import com.example.wandremote.sensors.SensorHub
@@ -42,6 +47,7 @@ import java.util.concurrent.atomic.AtomicLong
 class WandViewModel(app: Application) : AndroidViewModel(app) {
     val connection = ConnectionManager(app)
     val bluetooth = BluetoothHidMouse(app)
+    val bluetoothLink = BluetoothLink(app)
     val sensors = SensorHub(app)
     val haptics = Haptics(app)
     private val recentStore = RecentPcs(app)
@@ -62,16 +68,24 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
         settings.onEach(::applySettings).launchIn(viewModelScope)
     }
 
-    /** Merged UI state: the Bluetooth HID connection if there is one, otherwise the UDP connection. */
+    /** Merged UI state: the Bluetooth HID connection if there is one, then the Bluetooth link, otherwise UDP. */
     val connectionState: StateFlow<ConnectionState> =
-        combine(connection.state, bluetooth.state) { udp, bt ->
-            if (bt is BluetoothHidState.Connected) ConnectionState.ConnectedBluetooth(bt.deviceName) else udp
+        combine(connection.state, bluetooth.state, bluetoothLink.state) { udp, bt, link ->
+            mergeConnectionState(
+                udp,
+                (bt as? BluetoothHidState.Connected)?.deviceName,
+                link as? BluetoothLinkState.Connected,
+            )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, ConnectionState.Disconnected)
 
     /** Routes packets to whichever transport is currently connected. */
     val output: PacketSink = PacketSink { packet: Packet ->
         if (connectionState.value !is ConnectionState.Disconnected) sentPackets.incrementAndGet()
-        if (bluetooth.isConnected) bluetooth.send(packet) else connection.send(packet)
+        when (connectionState.value) {
+            is ConnectionState.ConnectedBluetooth -> bluetooth.send(packet)
+            is ConnectionState.ConnectedLink -> bluetoothLink.send(packet)
+            else -> connection.send(packet)
+        }
     }
 
     private val sentPackets = AtomicLong()
@@ -82,13 +96,22 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
     /** Connects to a paired PC over Bluetooth HID (the HID app must already be registered). */
     fun connectBluetooth(address: String) {
         connection.disconnect()
+        bluetoothLink.disconnect()
         bluetooth.connect(address)
+    }
+
+    /** Connects to the PC companion app over a Bluetooth RFCOMM link (paired device [address]). */
+    fun connectLink(address: String) {
+        connection.disconnect()
+        bluetooth.disconnect()
+        bluetoothLink.connect(address)
     }
 
     /** Disconnects whichever transport is active. */
     fun disconnect() {
         connection.disconnect()
         bluetooth.disconnect()
+        bluetoothLink.disconnect()
     }
 
     private val _recent = MutableStateFlow(recentStore.load())
@@ -96,6 +119,7 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
 
     fun connect(name: String, host: String, port: Int) {
         bluetooth.disconnect()
+        bluetoothLink.disconnect()
         connection.connect(host, port)
         _recent.value = recentStore.add(RecentPc(name, host, port))
     }
@@ -120,14 +144,14 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
         _pendingPairing.value = null
     }
 
-    // ---- Presenter mode ----
+    // ---- Laser pointer / corner calibration ----
 
     val aim = AimSensor(app)
     private val calibrationStore = CalibrationStore(app)
 
-    /** Calibration profile key: the connected Wi-Fi host, or "default" when there is none. */
+    /** Calibration profile key: the connected Wi-Fi host ("bt:<device>" for a Bluetooth link), or "default". */
     val profileKey: StateFlow<String> = connectionState
-        .map { (it as? ConnectionState.Connected)?.host ?: CalibrationStore.DEFAULT_KEY }
+        .map { it.calibrationKey() ?: CalibrationStore.DEFAULT_KEY }
         .stateIn(viewModelScope, SharingStarted.Eagerly, CalibrationStore.DEFAULT_KEY)
 
     /** The corner calibration for [profileKey], if one was saved. */
@@ -148,13 +172,10 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
         output.send(Packet.SetMode(mode))
     }
 
-    val presenter = PresenterController(
-        context = app,
+    val laser = LaserController(
         aimSensor = aim,
         output = output,
         haptics = haptics,
-        setMode = ::setMode,
-        gyroBias = { settings.value.gyroBias },
         calibration = { calibrationProfile.value?.calibration },
         updateCalibration = { cal ->
             val saved = calibrationProfile.value?.savedAtMs ?: System.currentTimeMillis()
@@ -164,7 +185,7 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         connectionState
-            .map { (it as? ConnectionState.Connected)?.let { c -> c.host to c.port } }
+            .map { it.companionSessionId() }
             .distinctUntilChanged()
             .filterNotNull()
             .onEach {
@@ -177,5 +198,6 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         connection.close()
         bluetooth.close()
+        bluetoothLink.close()
     }
 }

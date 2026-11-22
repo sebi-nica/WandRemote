@@ -38,8 +38,8 @@ sealed interface BluetoothHidState {
 data class PairedDevice(val name: String, val address: String, val isComputer: Boolean)
 
 /**
- * Registers the phone as a Bluetooth HID mouse ([BluetoothHidDevice], API 28+) and turns [Packet.Move],
- * [Packet.Button] and [Packet.Scroll] into HID reports. All report work happens on one background thread.
+ * Registers the phone as a Bluetooth HID mouse + keyboard combo ([BluetoothHidDevice], API 28+) and turns
+ * [Packet.Move], [Packet.Button], [Packet.Scroll] and [Packet.Key] into HID reports. All report work happens on one background thread.
  *
  * Every public entry point that touches the Bluetooth API first checks [hasPermission] (BLUETOOTH_CONNECT is
  * only a runtime permission on API 31+), hence the class-wide MissingPermission suppression.
@@ -64,6 +64,7 @@ class BluetoothHidMouse(context: Context) : PacketSink {
 
     // Touched only on [executor].
     private var buttons = 0
+    private val pressedKeys = ArrayList<Int>() // HID usages currently held, in press order
     private val accX = FractionAccumulator()
     private val accY = FractionAccumulator()
     private val wheel = WheelAccumulator()
@@ -115,7 +116,7 @@ class BluetoothHidMouse(context: Context) : PacketSink {
             "WandRemote",
             "WandRemote air mouse",
             "WandRemote",
-            BluetoothHidDevice.SUBCLASS1_MOUSE,
+            BluetoothHidDevice.SUBCLASS1_COMBO, // mouse + keyboard (arrow keys); hosts may need a re-pair
             HidMouseReport.DESCRIPTOR,
         )
         val ok = try {
@@ -216,12 +217,16 @@ class BluetoothHidMouse(context: Context) : PacketSink {
         }
     }
 
-    /** Releases any held mouse button on the host. */
+    /** Releases any held mouse button and keyboard key on the host. */
     fun releaseAll() {
         executor.execute {
             if (buttons != 0) {
                 buttons = 0
                 sendReport(0, 0, 0)
+            }
+            if (pressedKeys.isNotEmpty()) {
+                pressedKeys.clear()
+                sendKeyboardReport()
             }
         }
     }
@@ -255,6 +260,15 @@ class BluetoothHidMouse(context: Context) : PacketSink {
                         left -= c
                     }
                 }
+                is Packet.Key -> {
+                    val usage = HidMouseReport.keyUsage(packet.key)
+                    val changed = if (packet.pressed) {
+                        !pressedKeys.contains(usage) && pressedKeys.add(usage)
+                    } else {
+                        pressedKeys.remove(usage)
+                    }
+                    if (changed) sendKeyboardReport()
+                }
                 else -> Unit
             }
         }
@@ -272,6 +286,18 @@ class BluetoothHidMouse(context: Context) : PacketSink {
         }
     }
 
+    /** Executor thread only. */
+    private fun sendKeyboardReport() {
+        val hid = hidDevice ?: return
+        val dev = host ?: return
+        if (!hasPermission()) return
+        try {
+            hid.sendReport(dev, HidMouseReport.KEYBOARD_REPORT_ID, HidMouseReport.packKeyboard(0, pressedKeys))
+        } catch (e: SecurityException) {
+            // permission revoked while running
+        }
+    }
+
     private fun onHostState(device: BluetoothDevice, state: Int) {
         val name = try {
             device.name ?: device.address
@@ -282,6 +308,7 @@ class BluetoothHidMouse(context: Context) : PacketSink {
             BluetoothProfile.STATE_CONNECTED -> {
                 host = device
                 buttons = 0
+                pressedKeys.clear()
                 accX.reset()
                 accY.reset()
                 wheel.reset()
@@ -301,6 +328,11 @@ class BluetoothHidMouse(context: Context) : PacketSink {
         isConnected = false
         host = null
         buttons = 0
+        try {
+            executor.execute { pressedKeys.clear() } // the key list belongs to the executor thread
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            // already shut down
+        }
     }
 
     fun close() {

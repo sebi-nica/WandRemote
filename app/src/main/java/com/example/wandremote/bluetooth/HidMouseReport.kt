@@ -1,8 +1,19 @@
 package com.example.wandremote.bluetooth
 
-/** Pure-Kotlin HID mouse report descriptor and report packing (no Android imports, unit-testable). */
+import com.example.wandremote.shared.RemoteKey
+
+/**
+ * Pure-Kotlin HID descriptor and report packing for the phone's mouse + keyboard combo (no Android imports,
+ * unit-testable). Mouse = Report ID 1, keyboard = Report ID 2.
+ *
+ * NOTE: the keyboard collection was added after the mouse-only version shipped. A PC that was already paired with
+ * the old descriptor caches it, so Windows may need the phone removed from its Bluetooth devices and paired again
+ * before the arrow keys work.
+ */
 object HidMouseReport {
     const val REPORT_ID = 1
+    const val KEYBOARD_REPORT_ID = 2
+    const val MAX_KEYS = 6
     const val MAX_DELTA = 127
 
     const val BUTTON_LEFT = 0x01
@@ -12,7 +23,7 @@ object HidMouseReport {
     private fun b(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
 
     /** Mouse, Report ID 1: 3 buttons + 5 padding bits, X/Y/Wheel as relative signed 8-bit (-127..127). */
-    val DESCRIPTOR: ByteArray = b(
+    private val MOUSE_DESCRIPTOR: ByteArray = b(
         0x05, 0x01, // Usage Page (Generic Desktop)
         0x09, 0x02, // Usage (Mouse)
         0xA1, 0x01, // Collection (Application)
@@ -42,6 +53,59 @@ object HidMouseReport {
         0xC0, //   End Collection
         0xC0, // End Collection
     )
+
+    /** Boot-style keyboard, Report ID 2: modifier bitmap, reserved byte, 6 key slots (usages 0..0x65). */
+    private val KEYBOARD_DESCRIPTOR: ByteArray = b(
+        0x05, 0x01, // Usage Page (Generic Desktop)
+        0x09, 0x06, // Usage (Keyboard)
+        0xA1, 0x01, // Collection (Application)
+        0x85, KEYBOARD_REPORT_ID, //   Report ID (2)
+        0x05, 0x07, //   Usage Page (Keyboard/Keypad)
+        0x19, 0xE0, //   Usage Minimum (Left Control)
+        0x29, 0xE7, //   Usage Maximum (Right GUI)
+        0x15, 0x00, //   Logical Minimum (0)
+        0x25, 0x01, //   Logical Maximum (1)
+        0x75, 0x01, //   Report Size (1)
+        0x95, 0x08, //   Report Count (8)
+        0x81, 0x02, //   Input (Data, Var, Abs) - modifier keys
+        0x95, 0x01, //   Report Count (1)
+        0x75, 0x08, //   Report Size (8)
+        0x81, 0x01, //   Input (Const) - reserved byte
+        0x95, MAX_KEYS, //   Report Count (6)
+        0x75, 0x08, //   Report Size (8)
+        0x15, 0x00, //   Logical Minimum (0)
+        0x25, 0x65, //   Logical Maximum (101)
+        0x05, 0x07, //   Usage Page (Keyboard/Keypad)
+        0x19, 0x00, //   Usage Minimum (0)
+        0x29, 0x65, //   Usage Maximum (101)
+        0x81, 0x00, //   Input (Data, Array) - pressed keys
+        0xC0, // End Collection
+    )
+
+    /** The full descriptor: the mouse collection followed by the keyboard collection. */
+    val DESCRIPTOR: ByteArray = MOUSE_DESCRIPTOR + KEYBOARD_DESCRIPTOR
+
+    /** HID keyboard usage (usage page 0x07) for a phone key. */
+    fun keyUsage(key: RemoteKey): Int = when (key) {
+        RemoteKey.RIGHT -> 0x4F
+        RemoteKey.LEFT -> 0x50
+        RemoteKey.DOWN -> 0x51
+        RemoteKey.UP -> 0x52
+        RemoteKey.PAGE_UP -> 0x4B
+        RemoteKey.PAGE_DOWN -> 0x4E
+        RemoteKey.ESCAPE -> 0x29
+        RemoteKey.F5 -> 0x3E
+        RemoteKey.ENTER -> 0x28
+        RemoteKey.SPACE -> 0x2C
+    }
+
+    /** 8-byte keyboard report payload (without the report ID): modifiers, reserved, up to [MAX_KEYS] usages. */
+    fun packKeyboard(modifiers: Int, usages: Collection<Int>): ByteArray {
+        val out = ByteArray(2 + MAX_KEYS)
+        out[0] = modifiers.toByte()
+        usages.take(MAX_KEYS).forEachIndexed { i, u -> out[2 + i] = u.toByte() }
+        return out
+    }
 
     /** 4-byte report payload (without the report ID): buttons, dx, dy, wheel. Deltas are clamped to +-127. */
     fun pack(buttons: Int, dx: Int, dy: Int, wheel: Int): ByteArray = byteArrayOf(

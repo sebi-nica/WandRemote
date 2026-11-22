@@ -24,7 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.example.wandremote.WandViewModel
-import com.example.wandremote.network.ConnectionState
+import com.example.wandremote.network.companionConnected
 import com.example.wandremote.sensors.Aim
 import com.example.wandremote.sensors.AimHistory
 import com.example.wandremote.sensors.AimSensor
@@ -37,7 +37,7 @@ private val CORNER_NAMES = listOf("TOP-LEFT", "TOP-RIGHT", "BOTTOM-RIGHT", "BOTT
 
 /**
  * Guided "aim at each screen corner" calibration for the PC the phone is connected to (profile key = Wi-Fi host).
- * Used on the Calibration screen and, when no profile exists yet, on the Presenter screen.
+ * Used on the Calibration screen and in the Recalibrate dialog of the Pointer screen.
  */
 @Composable
 fun CornerCalibrationCard(vm: WandViewModel) {
@@ -95,7 +95,7 @@ fun CornerCalibrationCard(vm: WandViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (connection !is ConnectionState.Connected) {
+        if (!connection.companionConnected) {
             Text(
                 "Connect to the PC first to save the profile for that PC.",
                 style = MaterialTheme.typography.bodySmall,

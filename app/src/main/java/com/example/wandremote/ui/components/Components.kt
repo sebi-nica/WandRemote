@@ -14,6 +14,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,12 @@ import com.example.wandremote.ui.theme.ConnectedGreen
 fun ConnectionStatusChip(state: ConnectionState, modifier: Modifier = Modifier) {
     val connected = state as? ConnectionState.Connected
     val bluetooth = state as? ConnectionState.ConnectedBluetooth
+    val link = state as? ConnectionState.ConnectedLink
+    fun latencyText(ms: Int) = when {
+        ms < 0 -> "No response"
+        ms == 0 -> "..."
+        else -> "$ms ms"
+    }
     AssistChip(
         onClick = {},
         modifier = modifier,
@@ -48,16 +55,23 @@ fun ConnectionStatusChip(state: ConnectionState, modifier: Modifier = Modifier) 
             Text(
                 when {
                     bluetooth != null -> bluetooth.deviceName
+                    link != null -> "${link.deviceName} via PC app · ${latencyText(link.latencyMs)}"
                     connected == null -> "Offline"
-                    connected.latencyMs < 0 -> "No response"
-                    connected.latencyMs == 0 -> "..."
-                    else -> "${connected.latencyMs} ms"
+                    else -> latencyText(connected.latencyMs)
                 },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         },
         leadingIcon = {
-            if (bluetooth != null) {
-                Icon(Icons.Default.Bluetooth, contentDescription = null, Modifier.size(16.dp), tint = ConnectedGreen)
+            if (bluetooth != null || link != null) {
+                val ok = link == null || link.latencyMs >= 0
+                Icon(
+                    Icons.Default.Bluetooth,
+                    contentDescription = null,
+                    Modifier.size(16.dp),
+                    tint = if (ok) ConnectedGreen else MaterialTheme.colorScheme.error,
+                )
             } else {
                 Box(
                     Modifier

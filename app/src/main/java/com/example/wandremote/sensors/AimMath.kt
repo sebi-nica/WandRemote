@@ -7,7 +7,7 @@ import kotlin.math.atan2
 import kotlin.math.sqrt
 
 /**
- * Pure math for Presenter mode's absolute pointing (no Android imports, so it is unit-testable).
+ * Pure math for the laser pointer's absolute aiming (no Android imports, so it is unit-testable).
  *
  * World frame is Android's (x = East, y = North, z = Up). The phone is held like a remote, screen up, top edge
  * toward the screen, so the pointing axis is the device +Y axis.
@@ -123,7 +123,7 @@ data class ScreenPoint(val x: Float, val y: Float)
  *
  * Limitation: the game rotation vector has no compass, so its yaw zero is arbitrary after every sensor restart and
  * drifts slowly (roughly degrees per minute). Pitch is anchored by gravity and does not drift. [recentered] fixes the
- * yaw by shifting [refYaw]; the UI asks for that whenever the Presenter screen opens.
+ * yaw by shifting [refYaw]; the Pointer screen offers a Re-center button for that.
  */
 class ScreenCalibration(val refYaw: Float, val corners: List<Aim>) {
     init {

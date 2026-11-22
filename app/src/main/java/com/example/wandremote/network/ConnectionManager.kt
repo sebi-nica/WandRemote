@@ -31,6 +31,12 @@ sealed interface ConnectionState {
     /** Connected as a Bluetooth HID mouse to [deviceName]; no latency measurement. */
     data class ConnectedBluetooth(val deviceName: String) : ConnectionState
 
+    /**
+     * Connected to the PC companion app over a Bluetooth RFCOMM link (all companion features, no Wi-Fi).
+     * [latencyMs] uses the same semantics as [Connected.latencyMs].
+     */
+    data class ConnectedLink(val deviceName: String, val latencyMs: Int) : ConnectionState
+
     /** [latencyMs]: round-trip in ms; [LATENCY_PENDING] before the first Pong; [LATENCY_NONE] when the PC stopped answering. */
     data class Connected(val host: String, val port: Int, val latencyMs: Int) : ConnectionState {
         companion object {

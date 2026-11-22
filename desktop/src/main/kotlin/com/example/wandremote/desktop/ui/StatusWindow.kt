@@ -123,6 +123,8 @@ private fun StatusSection(state: AppState) {
             LabeledValue("UDP ${Protocol.DEFAULT_UDP_PORT}", status)
             LabeledValue("TCP ${Protocol.DEFAULT_TCP_PORT}", status)
             LabeledValue("Discovery ${Protocol.DISCOVERY_PORT}", status)
+            LabeledValue("Bluetooth", if (state.serverRunning) state.bluetoothStatus else "stopped")
+            state.bluetoothLocal?.let { LabeledValue("This PC (Bluetooth)", it) }
             state.serverError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(onClick = { state.serverRunning = !state.serverRunning }) {
                 Text(if (state.serverRunning) "Stop server" else "Start server")
@@ -142,6 +144,7 @@ private fun PairingSection(state: AppState) {
     OutlinedButton(onClick = {
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(uri), null)
     }) { Text("Copy") }
+    Text("Bluetooth: pair your phone with this PC in Windows Bluetooth settings, then pick this PC in the app's Bluetooth list.")
 }
 
 @Composable

@@ -7,24 +7,28 @@ import java.awt.event.InputEvent
 import kotlin.math.roundToInt
 
 /** Thin wrapper over [Robot]. Not wired to the network yet. */
-class InputController {
-    private val robot = Robot().apply { autoDelay = 0 }
+open class InputController {
+    private val robot by lazy { Robot().apply { autoDelay = 0 } }
 
-    fun moveBy(dx: Int, dy: Int) {
+    open fun moveBy(dx: Int, dy: Int) {
         val p = MouseInfo.getPointerInfo().location
         robot.mouseMove(p.x + dx, p.y + dy)
     }
 
-    fun moveTo(x: Int, y: Int) = robot.mouseMove(x, y)
+    open fun moveTo(x: Int, y: Int) = robot.mouseMove(x, y)
 
-    fun press(button: MouseButton) = robot.mousePress(mask(button))
+    open fun press(button: MouseButton) = robot.mousePress(mask(button))
 
-    fun release(button: MouseButton) = robot.mouseRelease(mask(button))
+    open fun release(button: MouseButton) = robot.mouseRelease(mask(button))
 
-    fun scroll(notches: Float) = robot.mouseWheel(notches.roundToInt())
+    open fun scroll(notches: Float) = robot.mouseWheel(notches.roundToInt())
+
+    open fun keyPress(keyCode: Int) = robot.keyPress(keyCode)
+
+    open fun keyRelease(keyCode: Int) = robot.keyRelease(keyCode)
 
     /** Presses all key codes in order, then releases them in reverse (e.g. VK_CONTROL, VK_Z). */
-    fun keyCombo(vararg keyCodes: Int) {
+    open fun keyCombo(vararg keyCodes: Int) {
         keyCodes.forEach { robot.keyPress(it) }
         keyCodes.reversed().forEach { robot.keyRelease(it) }
     }

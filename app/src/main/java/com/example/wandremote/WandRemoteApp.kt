@@ -31,12 +31,12 @@ import androidx.navigation.compose.rememberNavController
 import com.example.wandremote.navigation.ModeDestination
 import com.example.wandremote.navigation.Routes
 import com.example.wandremote.network.ConnectionState
+import com.example.wandremote.network.companionConnected
 import com.example.wandremote.ui.components.ConnectionStatusChip
 import com.example.wandremote.ui.screens.calibration.CalibrationScreen
 import com.example.wandremote.ui.screens.connect.ConnectScreen
 import com.example.wandremote.ui.screens.debug.SensorDebugScreen
 import com.example.wandremote.ui.screens.pointer.PointerScreen
-import com.example.wandremote.ui.screens.presenter.PresenterScreen
 import com.example.wandremote.ui.screens.settings.SettingsScreen
 import com.example.wandremote.ui.screens.threed.ThreeDScreen
 import com.example.wandremote.ui.screens.config.ConfigScreen
@@ -65,8 +65,8 @@ fun WandRemoteApp() {
         }
     }
 
-    // A PC connected to our Bluetooth mouse (e.g. Windows right after pairing): jump to the pointer.
-    val btConnected = connection is ConnectionState.ConnectedBluetooth
+    // A PC connected via Bluetooth (HID mouse, e.g. Windows right after pairing, or the PC app link): jump to the pointer.
+    val btConnected = connection is ConnectionState.ConnectedBluetooth || connection is ConnectionState.ConnectedLink
     LaunchedEffect(btConnected, route) {
         if (btConnected && route == Routes.CONNECT) {
             navController.navigate(Routes.POINTER) {
@@ -152,7 +152,6 @@ fun WandRemoteApp() {
             }
             composable(Routes.POINTER) { PointerScreen(vm) }
             composable(Routes.CONFIG) { ConfigScreen(vm) }
-            composable(Routes.PRESENTER) { PresenterScreen(vm) }
             composable(Routes.THREE_D) { ThreeDScreen(vm) }
             composable(Routes.CALIBRATION) { CalibrationScreen(vm) }
             composable(Routes.SETTINGS) { SettingsScreen(vm) }

@@ -17,7 +17,8 @@ enum class PacketType(val id: Byte) {
     HELLO(10),
     BYE(11),
     SET_MODE(12),
-    ZOOM(13);
+    ZOOM(13),
+    KEY(14);
 
     companion object {
         private val byId = entries.associateBy { it.id }
@@ -38,6 +39,15 @@ enum class Gesture(val id: Byte) {
 
     companion object {
         fun fromId(id: Byte): Gesture? = entries.firstOrNull { it.id == id }
+    }
+}
+
+/** Keyboard keys the phone can press on the PC. */
+enum class RemoteKey(val id: Byte) {
+    LEFT(0), RIGHT(1), UP(2), DOWN(3), PAGE_UP(4), PAGE_DOWN(5), ESCAPE(6), F5(7), ENTER(8), SPACE(9);
+
+    companion object {
+        fun fromId(id: Byte): RemoteKey? = entries.firstOrNull { it.id == id }
     }
 }
 
@@ -88,6 +98,9 @@ sealed class Packet(val type: PacketType) {
 
     /** 3D mode zoom: positive = zoom in, in arbitrary steps (fractional allowed). */
     data class Zoom(val amount: Float) : Packet(PacketType.ZOOM)
+
+    /** Key press/release (a tap is press + release), e.g. arrow keys for slides. */
+    data class Key(val key: RemoteKey, val pressed: Boolean) : Packet(PacketType.KEY)
 }
 
 /** Binary encoding: [MAGIC][type][payload...], little-endian. */
@@ -115,6 +128,7 @@ object PacketCodec {
             Packet.Bye -> Unit
             is Packet.SetMode -> buf.put(packet.mode.id)
             is Packet.Zoom -> buf.putFloat(packet.amount)
+            is Packet.Key -> buf.put(packet.key.id).put(if (packet.pressed) 1 else 0)
         }
         return buf.array().copyOf(buf.position())
     }
@@ -145,6 +159,7 @@ object PacketCodec {
                 PacketType.BYE -> Packet.Bye
                 PacketType.SET_MODE -> Packet.SetMode(RemoteMode.fromId(buf.get()) ?: return null)
                 PacketType.ZOOM -> Packet.Zoom(buf.float)
+                PacketType.KEY -> Packet.Key(RemoteKey.fromId(buf.get()) ?: return null, buf.get() != 0.toByte())
             }
         } catch (e: java.nio.BufferUnderflowException) {
             null

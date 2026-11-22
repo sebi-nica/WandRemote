@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.example.wandremote.WandViewModel
 import com.example.wandremote.network.ConnectionState
+import com.example.wandremote.network.companionConnected
 import com.example.wandremote.sensors.AxisLock
 import com.example.wandremote.sensors.OrientationSensor
 import com.example.wandremote.sensors.Quat
@@ -60,13 +61,13 @@ fun ThreeDScreen(vm: WandViewModel, modifier: Modifier = Modifier) {
     val haptics = vm.haptics
     val connection by vm.connectionState.collectAsState()
     val settings by vm.settings.collectAsState()
-    val wifi = connection is ConnectionState.Connected
+    val companion = connection.companionConnected
     val bluetoothOnly = connection is ConnectionState.ConnectedBluetooth
 
     val session = remember(vm) {
         ThreeDSession(
             send = { vm.output.send(it) },
-            streaming = { vm.connectionState.value is ConnectionState.Connected },
+            streaming = { vm.connectionState.value.companionConnected },
         )
     }
     val sensor = remember(session) { OrientationSensor(context) { q, ts -> session.onSample(q, ts) } }
@@ -78,9 +79,9 @@ fun ThreeDScreen(vm: WandViewModel, modifier: Modifier = Modifier) {
         session.setLock(AxisLock(pitch = lockPitch, roll = lockRoll, yaw = lockYaw))
     }
 
-    // Tell the PC we are in 3D mode (again when the Wi-Fi connection comes up while this screen is open).
+    // Tell the PC we are in 3D mode (again when the PC app connection comes up while this screen is open).
     // Goes through the VM so the mode is remembered and re-sent after reconnects.
-    LaunchedEffect(wifi) { if (wifi) vm.setMode(RemoteMode.THREE_D) }
+    LaunchedEffect(companion) { if (companion) vm.setMode(RemoteMode.THREE_D) }
 
     // The sensor runs only while this screen is resumed; each time it opens, the current pose becomes the reference.
     LifecycleResumeEffect(session) {
@@ -120,7 +121,7 @@ fun ThreeDScreen(vm: WandViewModel, modifier: Modifier = Modifier) {
     }
     val zoomButton: @Composable (Modifier) -> Unit = { m ->
         val active = session.zooming
-        val enabled = wifi
+        val enabled = companion
         Box(
             m
                 .height(HOLD_HEIGHT)
@@ -157,13 +158,13 @@ fun ThreeDScreen(vm: WandViewModel, modifier: Modifier = Modifier) {
         if (bluetoothOnly) {
             Card(Modifier.fillMaxWidth()) {
                 Text(
-                    "3D mode needs the Wi-Fi connection to the PC app. You are connected as a Bluetooth mouse, " +
+                    "3D mode needs the PC app connection (Wi-Fi or Bluetooth link). You are connected as a Bluetooth mouse, " +
                         "which cannot carry orientation, so streaming is off. Connect to the PC app on the Connect tab.",
                     Modifier.padding(12.dp),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-        } else if (!wifi) {
+        } else if (!companion) {
             Text(
                 "Not connected to the PC app. The preview works, but nothing is sent.",
                 style = MaterialTheme.typography.bodyMedium,

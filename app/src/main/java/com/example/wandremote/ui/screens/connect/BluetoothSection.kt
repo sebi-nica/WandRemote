@@ -65,7 +65,7 @@ fun BluetoothSection(vm: WandViewModel) {
         discoverableLauncher.launch(intent)
     }
 
-    SectionCard("Bluetooth mouse (no PC app needed)") {
+    SectionCard("Bluetooth mouse (no PC app, mouse + arrow keys only)") {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Default.Bluetooth, contentDescription = null, Modifier.size(18.dp))
             if (state is BluetoothHidState.Registering || state is BluetoothHidState.Connecting) {

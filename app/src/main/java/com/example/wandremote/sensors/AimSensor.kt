@@ -9,7 +9,7 @@ import android.os.SystemClock
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Streams the phone's pointing direction ([Aim]) for Presenter mode and corner calibration.
+ * Streams the phone's pointing direction ([Aim]) for the Pointer screen's laser and corner calibration.
  *
  * Uses the game rotation vector (gyro + accelerometer, no magnetometer, so no compass jumps), falling back to the
  * rotation vector when it is missing. The sensor is registered while at least one session is open, and all sessions

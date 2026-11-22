@@ -22,6 +22,8 @@ class PacketCodecTest {
         Packet.SetMode(RemoteMode.PRESENTER),
         Packet.SetMode(RemoteMode.THREE_D),
         Packet.Zoom(-0.5f),
+        Packet.Key(RemoteKey.LEFT, pressed = true),
+        Packet.Key(RemoteKey.F5, pressed = false),
     )
 
     @Test

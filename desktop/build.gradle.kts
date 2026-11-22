@@ -16,6 +16,7 @@ dependencies {
     implementation(libs.compose.desktop.material3)
     implementation(libs.compose.desktop.material.icons.extended)
     implementation(libs.zxing.core)
+    implementation(libs.bluecove)
     testImplementation(kotlin("test"))
 }
 

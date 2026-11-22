@@ -20,6 +20,10 @@ class AppState {
     var mode by mutableStateOf(ControlMode.POINTER)
     var serverRunning by mutableStateOf(true)
     var serverError by mutableStateOf<String?>(null)
+    /** Bluetooth RFCOMM server status line ("listening (WandRemote)", "connected: ...", "unavailable: ..."). */
+    var bluetoothStatus by mutableStateOf("starting...")
+    /** This PC's Bluetooth name and address, when the adapter could be queried. */
+    var bluetoothLocal by mutableStateOf<String?>(null)
     /** Latest phone orientation quaternion (w, x, y, z). */
     var orientation by mutableStateOf(floatArrayOf(1f, 0f, 0f, 0f))
     /** 3D viewer zoom factor (1 = default), accumulated from Zoom packets. */

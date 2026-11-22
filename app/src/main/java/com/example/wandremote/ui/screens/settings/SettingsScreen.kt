@@ -34,7 +34,7 @@ fun SettingsScreen(vm: WandViewModel) {
         Text("Pointer tuning is in the Config tab.", style = MaterialTheme.typography.bodyMedium, color = muted)
 
         SectionCard("General") {
-            SwitchRow("Left-handed mode", settings.leftHanded) { v -> vm.updateSettings { copy(leftHanded = v) } }
+            SwitchRow("Flip button layout (left-handed)", settings.leftHanded) { v -> vm.updateSettings { copy(leftHanded = v) } }
             LabeledSlider(
                 "Vibration strength", settings.vibrationStrength,
                 { v -> vm.updateSettings { copy(vibrationStrength = v) } },

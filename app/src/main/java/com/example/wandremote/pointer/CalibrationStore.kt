@@ -1,4 +1,4 @@
-package com.example.wandremote.presenter
+package com.example.wandremote.pointer
 
 import android.content.Context
 import com.example.wandremote.sensors.Aim

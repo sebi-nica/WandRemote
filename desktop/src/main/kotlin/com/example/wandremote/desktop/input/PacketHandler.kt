@@ -7,16 +7,23 @@ import com.example.wandremote.desktop.ui.viewer.MAX_ZOOM
 import com.example.wandremote.desktop.ui.viewer.MIN_ZOOM
 import com.example.wandremote.shared.MouseButton
 import com.example.wandremote.shared.Packet
+import com.example.wandremote.shared.RemoteKey
 import com.example.wandremote.shared.RemoteMode
 import java.awt.GraphicsEnvironment
 import java.awt.event.KeyEvent
-import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.SwingUtilities
 import kotlin.math.pow
+
+/** Where a packet came from (UDP peer or Bluetooth stream) and how to answer it. */
+interface PacketSource {
+    /** Shown after the phone name, e.g. the IP address or "Bluetooth". */
+    val label: String
+    fun reply(packet: Packet)
+}
 
 /**
  * Applies decoded packets. Called from the UDP receiver thread (Robot calls happen there);
@@ -26,7 +33,6 @@ import kotlin.math.pow
 class PacketHandler(
     private val state: AppState,
     private val input: InputController,
-    private val reply: (Packet, InetSocketAddress) -> Unit,
 ) {
     private val count = AtomicInteger()
     @Volatile private var lastPacketNanos = 0L
@@ -62,14 +68,13 @@ class PacketHandler(
 
     private fun ui(block: () -> Unit) = SwingUtilities.invokeLater(block)
 
-    fun handle(packet: Packet, from: InetSocketAddress) {
+    fun handle(packet: Packet, from: PacketSource) {
         count.incrementAndGet()
         lastPacketNanos = System.nanoTime()
-        val ip = from.address.hostAddress
         when (packet) {
-            is Packet.Hello -> markConnected("${packet.name} ($ip)")
+            is Packet.Hello -> markConnected("${packet.name} (${from.label})")
             is Packet.Bye -> markDisconnected()
-            else -> if (!connected) markConnected(ip)
+            else -> if (!connected) markConnected(from.label)
         }
         when (packet) {
             is Packet.Move -> {
@@ -116,7 +121,7 @@ class PacketHandler(
                 if (blenderActive()) orbit.onOrientation(packet.w, packet.x, packet.y, packet.z, System.nanoTime())
             }
             is Packet.GestureEvent -> performAction(state.gestureActions[packet.gesture] ?: "None")
-            is Packet.Ping -> reply(Packet.Pong(packet.timestampNanos), from)
+            is Packet.Ping -> from.reply(Packet.Pong(packet.timestampNanos))
             is Packet.SetMode -> {
                 val mode = when (packet.mode) {
                     RemoteMode.POINTER -> ControlMode.POINTER
@@ -135,8 +140,23 @@ class PacketHandler(
                     ui { state.zoom = (state.zoom * factor).coerceIn(MIN_ZOOM, MAX_ZOOM) }
                 }
             }
+            is Packet.Key -> {
+                val code = keyCode(packet.key)
+                if (packet.pressed) {
+                    heldKeys += code
+                    input.keyPress(code)
+                } else {
+                    heldKeys -= code
+                    input.keyRelease(code)
+                }
+            }
             is Packet.Pong, is Packet.Hello, Packet.Bye -> Unit
         }
+    }
+
+    /** The transport behind [source] closed (stream EOF/error); treated like a Bye. */
+    fun disconnected(source: PacketSource) {
+        markDisconnected()
     }
 
     /** Once per second: publish packet rate and enforce the 3 s disconnect timeout. */
@@ -196,7 +216,25 @@ class PacketHandler(
         return backend == ViewerBackend.BLENDER
     }
 
+    /** Keys currently held down by the phone, released on disconnect so nothing stays stuck. */
+    private val heldKeys = java.util.Collections.synchronizedSet(mutableSetOf<Int>())
+
+    private fun keyCode(key: RemoteKey): Int = when (key) {
+        RemoteKey.LEFT -> KeyEvent.VK_LEFT
+        RemoteKey.RIGHT -> KeyEvent.VK_RIGHT
+        RemoteKey.UP -> KeyEvent.VK_UP
+        RemoteKey.DOWN -> KeyEvent.VK_DOWN
+        RemoteKey.PAGE_UP -> KeyEvent.VK_PAGE_UP
+        RemoteKey.PAGE_DOWN -> KeyEvent.VK_PAGE_DOWN
+        RemoteKey.ESCAPE -> KeyEvent.VK_ESCAPE
+        RemoteKey.F5 -> KeyEvent.VK_F5
+        RemoteKey.ENTER -> KeyEvent.VK_ENTER
+        RemoteKey.SPACE -> KeyEvent.VK_SPACE
+    }
+
     private fun releaseHeldButtons() {
+        val keys = synchronized(heldKeys) { heldKeys.toList().also { heldKeys.clear() } }
+        keys.forEach { input.keyRelease(it) }
         val held = synchronized(heldButtons) { heldButtons.toList().also { heldButtons.clear() } }
         held.forEach { input.release(it) }
     }
