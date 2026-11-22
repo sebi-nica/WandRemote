@@ -58,4 +58,12 @@ class AppSettingsTest {
         assertEquals(0.2f, r.vibrationStrength, 0f)
         assertEquals(5L, r.gyroBiasTimeMs)
     }
+
+    @Test
+    fun laserRangeDefaultsClampsAndResets() {
+        assertEquals(30f, AppSettings().laserRangeDeg, 0f)
+        assertEquals(10f, AppSettings(laserRangeDeg = 1f).coerced().laserRangeDeg, 0f)
+        assertEquals(90f, AppSettings(laserRangeDeg = 500f).coerced().laserRangeDeg, 0f)
+        assertEquals(30f, AppSettings(laserRangeDeg = 60f).withDefaultTuning().laserRangeDeg, 0f)
+    }
 }

@@ -7,14 +7,23 @@ import kotlin.test.assertNull
 class PairingUriTest {
     @Test
     fun roundTrips() {
-        val uri = Protocol.pairingUri("192.168.50.76", 47801, 47802)
-        assertEquals(PairingInfo("192.168.50.76", 47801, 47802, Protocol.VERSION), Protocol.parsePairingUri(uri))
+        val uri = Protocol.pairingUri("192.168.50.76", 47801)
+        assertEquals("wandremote://192.168.50.76:47801?v=${Protocol.VERSION}", uri)
+        assertEquals(PairingInfo("192.168.50.76", 47801, Protocol.VERSION), Protocol.parsePairingUri(uri))
     }
 
     @Test
-    fun missingPortsFallBackToDefaults() {
+    fun oldLinksWithTcpParameterStillParse() {
         assertEquals(
-            PairingInfo("10.0.0.5", Protocol.DEFAULT_UDP_PORT, Protocol.DEFAULT_TCP_PORT, Protocol.VERSION),
+            PairingInfo("10.0.0.5", 47801, 1),
+            Protocol.parsePairingUri("wandremote://10.0.0.5:47801?tcp=47802&v=1"),
+        )
+    }
+
+    @Test
+    fun missingPortFallsBackToDefault() {
+        assertEquals(
+            PairingInfo("10.0.0.5", Protocol.DEFAULT_UDP_PORT, Protocol.VERSION),
             Protocol.parsePairingUri("wandremote://10.0.0.5"),
         )
     }

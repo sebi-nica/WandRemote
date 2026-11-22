@@ -46,7 +46,7 @@ sealed interface ConnectionState {
     }
 }
 
-data class DiscoveredPc(val name: String, val ip: String, val udpPort: Int, val tcpPort: Int)
+data class DiscoveredPc(val name: String, val ip: String, val udpPort: Int)
 
 /**
  * UDP connection to the PC plus LAN discovery. All socket I/O runs on Dispatchers.IO.
@@ -65,6 +65,11 @@ class ConnectionManager(context: Context) : PacketSink {
 
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
+
+    private val _screenInfo = MutableStateFlow<Packet.ScreenInfo?>(null)
+
+    /** The PC's screen size, from its reply to Hello; null until received (reset on disconnect). */
+    val screenInfo: StateFlow<Packet.ScreenInfo?> = _screenInfo.asStateFlow()
 
     private class Session(val socket: DatagramSocket, val outbox: Channel<Packet>, val job: Job)
 
@@ -126,18 +131,18 @@ class ConnectionManager(context: Context) : PacketSink {
     }
 
     private fun parseReply(text: String, ip: String): DiscoveredPc? {
+        // WANDREMOTE_HERE|<version>|<name>|<udpPort>[|<ignored legacy field>]
         val parts = text.trim().split('|')
-        if (parts.size < 5 || parts[0] != Protocol.DISCOVERY_RESPONSE_PREFIX) return null
-        val udp = parts[parts.size - 2].toIntOrNull() ?: return null
-        val tcp = parts[parts.size - 1].toIntOrNull() ?: return null
-        val name = parts.subList(2, parts.size - 2).joinToString("|")
-        return DiscoveredPc(name, ip, udp, tcp)
+        if (parts.size < 4 || parts[0] != Protocol.DISCOVERY_RESPONSE_PREFIX) return null
+        val udp = parts[3].toIntOrNull() ?: return null
+        return DiscoveredPc(parts[2], ip, udp)
     }
 
     // ---- Connection ----
 
     fun connect(host: String, port: Int) {
         closeSession()
+        _screenInfo.value = null
         _state.value = ConnectionState.Connected(host, port, ConnectionState.Connected.LATENCY_PENDING)
         val outbox = Channel<Packet>(Channel.UNLIMITED)
         val socket = DatagramSocket()
@@ -175,7 +180,9 @@ class ConnectionManager(context: Context) : PacketSink {
                         break // socket closed
                     }
                     val pkt = PacketCodec.decode(dp.data, dp.length)
-                    if (pkt is Packet.Pong) {
+                    if (pkt is Packet.ScreenInfo) {
+                        _screenInfo.value = pkt
+                    } else if (pkt is Packet.Pong) {
                         val now = System.nanoTime()
                         lastPong.set(now)
                         val ms = ((now - pkt.timestampNanos) / 1_000_000L).toInt().coerceAtLeast(1)
@@ -219,6 +226,7 @@ class ConnectionManager(context: Context) : PacketSink {
 
     fun disconnect() {
         closeSession()
+        _screenInfo.value = null
         _state.value = ConnectionState.Disconnected
     }
 

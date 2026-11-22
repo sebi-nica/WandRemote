@@ -6,19 +6,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.example.wandremote.WandViewModel
 import com.example.wandremote.network.ConnectionState
@@ -42,15 +35,14 @@ import com.example.wandremote.shared.MouseButton
 import com.example.wandremote.shared.Packet
 import com.example.wandremote.shared.RemoteKey
 import com.example.wandremote.shared.RemoteMode
-import com.example.wandremote.ui.screens.calibration.CornerCalibrationCard
 import com.example.wandremote.ui.screens.pointer.layout.ControlId
 import com.example.wandremote.ui.screens.pointer.layout.DefaultLayouts
 import kotlinx.coroutines.launch
 
 private val EDGE_PADDING = 12.dp
 
-/** Fraction of the content width the status text may use (the top buttons start at x = 0.50). */
-private const val STATUS_WIDTH_FRACTION = 0.46f
+/** Fraction of the content width the status text may use. */
+private const val STATUS_WIDTH_FRACTION = 0.9f
 
 private fun keyFor(id: ControlId): RemoteKey? = when (id) {
     ControlId.ARROW_LEFT -> RemoteKey.LEFT
@@ -71,32 +63,23 @@ fun PointerScreen(vm: WandViewModel) {
     val settings by vm.settings.collectAsState()
     val haptics = vm.haptics
     val connection by vm.connectionState.collectAsState()
-    val profile by vm.calibrationProfile.collectAsState()
     val laserHeld by vm.laser.laserHeld.collectAsState()
-    val needsRecenter by vm.laser.needsRecenter.collectAsState()
     val isConnected = connection.companionConnected || connection is ConnectionState.ConnectedBluetooth
     val bluetooth = connection is ConnectionState.ConnectedBluetooth
-    val calibrated = profile != null
 
     var movementOn by remember { mutableStateOf(false) }
     var leftDown by remember { mutableStateOf(false) }
     var rightDown by remember { mutableStateOf(false) }
-    var showCalibration by remember { mutableStateOf(false) }
     var session by remember { mutableStateOf<SensorHub.PointerSession?>(null) }
     val keysDown = remember { mutableSetOf<RemoteKey>() }
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    fun notify(message: String, offerRecalibrate: Boolean = false) {
+    fun notify(message: String) {
         scope.launch {
             snackbar.currentSnackbarData?.dismiss()
-            val result = snackbar.showSnackbar(
-                message,
-                actionLabel = if (offerRecalibrate) "Recalibrate" else null,
-                duration = SnackbarDuration.Short,
-            )
-            if (result == SnackbarResult.ActionPerformed) showCalibration = true
+            snackbar.showSnackbar(message, duration = SnackbarDuration.Short)
         }
     }
 
@@ -125,7 +108,7 @@ fun PointerScreen(vm: WandViewModel) {
         setMovement(false)
         vm.setMode(RemoteMode.POINTER)
         session = vm.sensors.openPointer(onMove = { dx, dy -> vm.output.send(Packet.Move(dx, dy)) })
-        if (!bluetooth) vm.laser.start(vm.calibrationProfile.value?.savedAtMs)
+        if (!bluetooth) vm.laser.start()
         onPauseOrDispose {
             vm.laser.stop()
             session?.close()
@@ -137,9 +120,6 @@ fun PointerScreen(vm: WandViewModel) {
             for (key in keysDown.toList()) setKey(key, false)
         }
     }
-
-    // A calibration captured while this screen is open is already in the current heading; another PC's is not.
-    LaunchedEffect(profile?.savedAtMs) { vm.laser.onProfileChanged(profile?.savedAtMs) }
 
     // Volume keys act as clicks only while connected and on this screen.
     DisposableEffect(isConnected) {
@@ -155,19 +135,10 @@ fun PointerScreen(vm: WandViewModel) {
         when {
             bluetooth -> notify("The laser needs the PC app (Wi-Fi or Bluetooth link)")
             !vm.laser.hasAimSensor -> notify("This phone has no rotation sensor for the laser")
-            !calibrated -> notify("Calibrate the screen corners to use the laser", offerRecalibrate = true)
             else -> {
                 setMovement(false) // touching the laser always turns the cursor off, and it stays off
                 if (vm.laser.setHeld(true)) haptics.pulse(20)
             }
-        }
-    }
-
-    fun pressRecenter() {
-        when {
-            bluetooth -> notify("The laser needs the PC app (Wi-Fi or Bluetooth link)")
-            !calibrated -> notify("Calibrate the screen corners first", offerRecalibrate = true)
-            else -> vm.laser.recenter()
         }
     }
 
@@ -178,8 +149,7 @@ fun PointerScreen(vm: WandViewModel) {
             ControlId.ARROW_LEFT, ControlId.ARROW_RIGHT, ControlId.ARROW_UP, ControlId.ARROW_DOWN ->
                 keyFor(id)?.let { setKey(it, true) }
             ControlId.LASER -> pressLaser()
-            ControlId.RECENTER -> pressRecenter()
-            ControlId.KNOB, ControlId.MOVE_TOGGLE, ControlId.RECALIBRATE -> Unit
+            ControlId.KNOB, ControlId.MOVE_TOGGLE -> Unit
         }
     }
     val onRelease by rememberUpdatedState<(ControlId, Boolean) -> Unit> { id, inside ->
@@ -193,11 +163,7 @@ fun PointerScreen(vm: WandViewModel) {
                 setMovement(!movementOn)
                 haptics.pulse(15)
             }
-            ControlId.RECALIBRATE -> if (inside) {
-                setMovement(false)
-                showCalibration = true
-            }
-            ControlId.KNOB, ControlId.RECENTER -> Unit
+            ControlId.KNOB -> Unit
         }
     }
     val invertScroll = settings.invertScroll
@@ -223,16 +189,8 @@ fun PointerScreen(vm: WandViewModel) {
             if (movementOn) add(ControlId.MOVE_TOGGLE)
             if (laserHeld) add(ControlId.LASER)
         }
-        val disabled = buildSet {
-            if (bluetooth) {
-                add(ControlId.LASER)
-                add(ControlId.RECENTER)
-            } else if (!calibrated) {
-                add(ControlId.RECENTER)
-            }
-        }
-        val attention = if (!bluetooth && calibrated && needsRecenter) setOf(ControlId.RECENTER) else emptySet()
-        val visuals = ControlsVisuals(active = active, disabled = disabled, attention = attention)
+        val disabled = if (bluetooth) setOf(ControlId.LASER) else emptySet()
+        val visuals = ControlsVisuals(active = active, disabled = disabled)
 
         PointerControls(
             layout = layout,
@@ -244,7 +202,7 @@ fun PointerScreen(vm: WandViewModel) {
             onKnobNotch = { onKnobNotch() },
         )
 
-        // Status text, top-left (the layout keeps its controls out of x < 0.50 near the top).
+        // Status text along the top (the layout keeps its controls clear of this strip).
         Column(Modifier.align(Alignment.TopStart).width(maxWidth * STATUS_WIDTH_FRACTION)) {
             Text(
                 if (movementOn) "Movement ON" else "Movement OFF",
@@ -254,24 +212,11 @@ fun PointerScreen(vm: WandViewModel) {
             val hint = when {
                 connection is ConnectionState.Disconnected -> "Not connected"
                 bluetooth -> "Bluetooth mouse: laser unavailable, connect to the PC app"
-                !calibrated -> "Laser needs calibration (Recalibrate)"
-                needsRecenter -> "Re-center before using the laser"
                 else -> "Volume down = left click, volume up = right click"
             }
             Text(hint, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
 
         SnackbarHost(snackbar, Modifier.align(Alignment.Center))
-    }
-
-    if (showCalibration) {
-        AlertDialog(
-            onDismissRequest = { showCalibration = false },
-            confirmButton = { TextButton(onClick = { showCalibration = false }) { Text("Close") } },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) { CornerCalibrationCard(vm) }
-            },
-            properties = DialogProperties(dismissOnClickOutside = false),
-        )
     }
 }

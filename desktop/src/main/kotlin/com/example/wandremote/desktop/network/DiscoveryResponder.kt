@@ -40,8 +40,7 @@ class DiscoveryResponder {
 
     private fun loop(s: DatagramSocket) {
         val buf = ByteArray(256)
-        val reply = "${Protocol.DISCOVERY_RESPONSE_PREFIX}|${Protocol.VERSION}|$pcName|" +
-            "${Protocol.DEFAULT_UDP_PORT}|${Protocol.DEFAULT_TCP_PORT}"
+        val reply = "${Protocol.DISCOVERY_RESPONSE_PREFIX}|${Protocol.VERSION}|$pcName|${Protocol.DEFAULT_UDP_PORT}"
         val replyBytes = reply.toByteArray(Charsets.UTF_8)
         while (!s.isClosed) {
             try {

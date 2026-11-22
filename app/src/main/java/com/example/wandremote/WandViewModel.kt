@@ -13,14 +13,10 @@ import com.example.wandremote.network.ConnectionState
 import com.example.wandremote.network.PacketSink
 import com.example.wandremote.network.RecentPc
 import com.example.wandremote.network.RecentPcs
-import com.example.wandremote.network.calibrationKey
 import com.example.wandremote.network.companionSessionId
 import com.example.wandremote.network.mergeConnectionState
-import com.example.wandremote.pointer.CalibrationProfile
-import com.example.wandremote.pointer.CalibrationStore
 import com.example.wandremote.pointer.LaserController
 import com.example.wandremote.sensors.AimSensor
-import com.example.wandremote.sensors.ScreenCalibration
 import com.example.wandremote.sensors.SensorHub
 import com.example.wandremote.settings.AppSettings
 import com.example.wandremote.settings.SettingsRepository
@@ -144,25 +140,19 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
         _pendingPairing.value = null
     }
 
-    // ---- Laser pointer / corner calibration ----
+    // ---- Laser pointer ----
 
     val aim = AimSensor(app)
-    private val calibrationStore = CalibrationStore(app)
 
-    /** Calibration profile key: the connected Wi-Fi host ("bt:<device>" for a Bluetooth link), or "default". */
-    val profileKey: StateFlow<String> = connectionState
-        .map { it.calibrationKey() ?: CalibrationStore.DEFAULT_KEY }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, CalibrationStore.DEFAULT_KEY)
-
-    /** The corner calibration for [profileKey], if one was saved. */
-    val calibrationProfile: StateFlow<CalibrationProfile?> =
-        combine(profileKey, calibrationStore.profiles) { key, all -> all[key] }
+    /** The PC's primary screen size as reported by the companion (Wi-Fi or Bluetooth link); null when unknown. */
+    val pcScreen: StateFlow<Packet.ScreenInfo?> =
+        combine(connection.screenInfo, bluetoothLink.screenInfo) { udp, link -> link ?: udp }
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    fun saveCalibration(calibration: ScreenCalibration) =
-        calibrationStore.save(profileKey.value, CalibrationProfile(calibration, System.currentTimeMillis()))
-
-    fun deleteCalibration() = calibrationStore.delete(profileKey.value)
+    /** PC screen height / width; [DEFAULT_PC_ASPECT] while unknown. */
+    val pcAspect: StateFlow<Float> = pcScreen
+        .map { info -> if (info != null && info.widthPx > 0 && info.heightPx > 0) info.heightPx.toFloat() / info.widthPx else DEFAULT_PC_ASPECT }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, DEFAULT_PC_ASPECT)
 
     private var currentMode = RemoteMode.POINTER
 
@@ -175,12 +165,8 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
     val laser = LaserController(
         aimSensor = aim,
         output = output,
-        haptics = haptics,
-        calibration = { calibrationProfile.value?.calibration },
-        updateCalibration = { cal ->
-            val saved = calibrationProfile.value?.savedAtMs ?: System.currentTimeMillis()
-            calibrationStore.save(profileKey.value, CalibrationProfile(cal, saved))
-        },
+        rangeDeg = { settings.value.laserRangeDeg },
+        aspect = { pcAspect.value },
     )
 
     init {
@@ -199,5 +185,9 @@ class WandViewModel(app: Application) : AndroidViewModel(app) {
         connection.close()
         bluetooth.close()
         bluetoothLink.close()
+    }
+
+    companion object {
+        const val DEFAULT_PC_ASPECT = 9f / 16f
     }
 }

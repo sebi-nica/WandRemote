@@ -42,14 +42,6 @@ fun SettingsScreen(vm: WandViewModel) {
                 onValueChangeFinished = { vm.haptics.pulse(30) },
             )
         }
-
-        SectionCard("Gestures") {
-            Text(
-                "Gesture actions are configured in the PC app's Gestures tab.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = muted,
-            )
-        }
     }
 }
 

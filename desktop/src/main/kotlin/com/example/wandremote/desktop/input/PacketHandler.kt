@@ -72,7 +72,10 @@ class PacketHandler(
         count.incrementAndGet()
         lastPacketNanos = System.nanoTime()
         when (packet) {
-            is Packet.Hello -> markConnected("${packet.name} (${from.label})")
+            is Packet.Hello -> {
+                markConnected("${packet.name} (${from.label})")
+                screenSize().let { (w, h) -> from.reply(Packet.ScreenInfo(w, h)) }
+            }
             is Packet.Bye -> markDisconnected()
             else -> if (!connected) markConnected(from.label)
         }
@@ -103,13 +106,6 @@ class PacketHandler(
                     input.scroll(n.toFloat())
                 }
             }
-            is Packet.Absolute -> {
-                val b = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration.bounds
-                input.moveTo(
-                    b.x + (packet.x.coerceIn(0f, 1f) * (b.width - 1)).toInt(),
-                    b.y + (packet.y.coerceIn(0f, 1f) * (b.height - 1)).toInt(),
-                )
-            }
             is Packet.Laser -> ui {
                 state.laserVisible = packet.on
                 state.laserX = packet.x
@@ -120,12 +116,10 @@ class PacketHandler(
                 ui { state.orientation = q }
                 if (blenderActive()) orbit.onOrientation(packet.w, packet.x, packet.y, packet.z, System.nanoTime())
             }
-            is Packet.GestureEvent -> performAction(state.gestureActions[packet.gesture] ?: "None")
             is Packet.Ping -> from.reply(Packet.Pong(packet.timestampNanos))
             is Packet.SetMode -> {
                 val mode = when (packet.mode) {
                     RemoteMode.POINTER -> ControlMode.POINTER
-                    RemoteMode.PRESENTER -> ControlMode.PRESENTER
                     RemoteMode.THREE_D -> ControlMode.THREE_D
                 }
                 threeD = mode == ControlMode.THREE_D
@@ -150,7 +144,7 @@ class PacketHandler(
                     input.keyRelease(code)
                 }
             }
-            is Packet.Pong, is Packet.Hello, Packet.Bye -> Unit
+            is Packet.Pong, is Packet.Hello, is Packet.ScreenInfo, Packet.Bye -> Unit
         }
     }
 
@@ -187,25 +181,6 @@ class PacketHandler(
         }
     }
 
-    private fun performAction(label: String) {
-        when (label) {
-            "Left arrow" -> input.keyCombo(KeyEvent.VK_LEFT)
-            "Right arrow" -> input.keyCombo(KeyEvent.VK_RIGHT)
-            "Up arrow" -> input.keyCombo(KeyEvent.VK_UP)
-            "Down arrow" -> input.keyCombo(KeyEvent.VK_DOWN)
-            "Page Up" -> input.keyCombo(KeyEvent.VK_PAGE_UP)
-            "Page Down" -> input.keyCombo(KeyEvent.VK_PAGE_DOWN)
-            "Left click" -> click(MouseButton.LEFT)
-            "Right click" -> click(MouseButton.RIGHT)
-            "Double click" -> { click(MouseButton.LEFT); click(MouseButton.LEFT) }
-            "Ctrl+Z" -> input.keyCombo(KeyEvent.VK_CONTROL, KeyEvent.VK_Z)
-            "Ctrl+Y" -> input.keyCombo(KeyEvent.VK_CONTROL, KeyEvent.VK_Y)
-            "Esc" -> input.keyCombo(KeyEvent.VK_ESCAPE)
-            "F5" -> input.keyCombo(KeyEvent.VK_F5)
-            else -> Unit
-        }
-    }
-
     /** True when the Blender backend is selected; switching backends lets go of the orbit first. */
     private fun blenderActive(): Boolean {
         val backend = state.viewerBackend
@@ -239,9 +214,12 @@ class PacketHandler(
         held.forEach { input.release(it) }
     }
 
-    private fun click(b: MouseButton) {
-        input.press(b)
-        input.release(b)
+    /** Primary screen size in pixels (the phone only needs the aspect ratio). */
+    private fun screenSize(): Pair<Int, Int> = try {
+        val mode = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.displayMode
+        mode.width to mode.height
+    } catch (e: Exception) { // headless or no display
+        1920 to 1080
     }
 
     private companion object {

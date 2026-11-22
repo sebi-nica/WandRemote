@@ -3,7 +3,6 @@ package com.example.wandremote.desktop.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,17 +17,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
@@ -51,11 +45,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.example.wandremote.desktop.AppState
-import com.example.wandremote.desktop.SHORTCUT_OPTIONS
 import com.example.wandremote.desktop.ViewerBackend
 import com.example.wandremote.desktop.ui.viewer.Viewer3D
 import com.example.wandremote.desktop.ui.viewer.ViewerControls
-import com.example.wandremote.shared.Gesture
 import com.example.wandremote.shared.Protocol
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -63,7 +55,6 @@ import java.awt.datatransfer.StringSelection
 private enum class Section(val label: String, val icon: ImageVector) {
     STATUS("Status", Icons.Filled.Dashboard),
     PAIRING("Pairing", Icons.Filled.QrCode2),
-    GESTURES("Gestures", Icons.Filled.TouchApp),
     VIEWER("3D viewer", Icons.Filled.ViewInAr),
     SETTINGS("Settings", Icons.Filled.Settings),
 }
@@ -91,7 +82,6 @@ fun StatusWindow(state: AppState) {
                 when (section) {
                     Section.STATUS -> StatusSection(state)
                     Section.PAIRING -> PairingSection(state)
-                    Section.GESTURES -> GesturesSection(state)
                     Section.VIEWER -> ViewerSection(state)
                     Section.SETTINGS -> SettingsSection(state)
                 }
@@ -121,7 +111,6 @@ private fun StatusSection(state: AppState) {
             Text("Server", style = MaterialTheme.typography.titleMedium)
             val status = if (state.serverRunning) "listening" else "stopped"
             LabeledValue("UDP ${Protocol.DEFAULT_UDP_PORT}", status)
-            LabeledValue("TCP ${Protocol.DEFAULT_TCP_PORT}", status)
             LabeledValue("Discovery ${Protocol.DISCOVERY_PORT}", status)
             LabeledValue("Bluetooth", if (state.serverRunning) state.bluetoothStatus else "stopped")
             state.bluetoothLocal?.let { LabeledValue("This PC (Bluetooth)", it) }
@@ -135,48 +124,15 @@ private fun StatusSection(state: AppState) {
 
 @Composable
 private fun PairingSection(state: AppState) {
-    val uri = Protocol.pairingUri(state.localIp, Protocol.DEFAULT_UDP_PORT, Protocol.DEFAULT_TCP_PORT)
+    val uri = Protocol.pairingUri(state.localIp, Protocol.DEFAULT_UDP_PORT)
     LabeledValue("Local IP", state.localIp)
     LabeledValue("UDP port", Protocol.DEFAULT_UDP_PORT.toString())
-    LabeledValue("TCP port", Protocol.DEFAULT_TCP_PORT.toString())
     QrCode(uri, Modifier.size(200.dp))
     Text(uri, fontFamily = FontFamily.Monospace)
     OutlinedButton(onClick = {
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(uri), null)
     }) { Text("Copy") }
     Text("Bluetooth: pair your phone with this PC in Windows Bluetooth settings, then pick this PC in the app's Bluetooth list.")
-}
-
-@Composable
-private fun GesturesSection(state: AppState) {
-    Row(Modifier.fillMaxWidth()) {
-        Text("Gesture", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-        Text("Action", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-    }
-    HorizontalDivider()
-    Gesture.entries.forEach { gesture ->
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(gesture.name, Modifier.weight(1f))
-            Box(Modifier.weight(1f)) {
-                var open by remember { mutableStateOf(false) }
-                OutlinedButton(onClick = { open = true }) {
-                    Text(state.gestureActions[gesture] ?: "None")
-                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
-                }
-                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                    SHORTCUT_OPTIONS.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option) },
-                            onClick = {
-                                state.gestureActions[gesture] = option
-                                open = false
-                            },
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -216,10 +172,8 @@ private fun ViewerSection(state: AppState) {
 @Composable
 private fun SettingsSection(state: AppState) {
     SwitchRow("Start minimized to tray", state.startMinimized) { state.startMinimized = it }
-    SwitchRow("Show laser overlay on presenter mode", state.overlayOnPresenter) { state.overlayOnPresenter = it }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         PortField("UDP port", Protocol.DEFAULT_UDP_PORT)
-        PortField("TCP port", Protocol.DEFAULT_TCP_PORT)
         PortField("Discovery port", Protocol.DISCOVERY_PORT)
     }
 }

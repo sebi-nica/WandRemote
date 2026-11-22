@@ -21,6 +21,8 @@ data class AppSettings(
     val leftHanded: Boolean = false,
     /** 0 = no vibration, 1 = full strength. */
     val vibrationStrength: Float = DEFAULT_VIBRATION,
+    /** Hand turn (degrees) that sweeps the laser from one screen edge to the other. */
+    val laserRangeDeg: Float = DEFAULT_LASER_RANGE,
     val gyroBias: GyroBias = GyroBias.ZERO,
     /** Epoch millis of the last gyro bias calibration, 0 if never. */
     val gyroBiasTimeMs: Long = 0L,
@@ -32,6 +34,7 @@ data class AppSettings(
         deadZone = deadZone.coerceIn(DEAD_ZONE_RANGE),
         scrollDegreesPerNotch = scrollDegreesPerNotch.coerceIn(DEGREES_PER_NOTCH_RANGE),
         knobSizeFraction = knobSizeFraction.coerceIn(KNOB_FRACTION_RANGE),
+        laserRangeDeg = laserRangeDeg.coerceIn(LASER_RANGE_DEG_RANGE),
         vibrationStrength = vibrationStrength.coerceIn(0f, 1f),
     )
 
@@ -42,7 +45,7 @@ data class AppSettings(
         smoothing = 1f - smoothing,
     )
 
-    /** Resets everything the Config tab edits; keeps layout flip, vibration and calibration. */
+    /** Resets everything the Config tab edits; keeps layout flip, vibration and gyro bias. */
     fun withDefaultTuning() = copy(
         sensitivity = DEFAULT_SENSITIVITY,
         acceleration = DEFAULT_ACCELERATION,
@@ -51,6 +54,7 @@ data class AppSettings(
         scrollDegreesPerNotch = DEFAULT_DEGREES_PER_NOTCH,
         knobSizeFraction = DEFAULT_KNOB_FRACTION,
         invertScroll = false,
+        laserRangeDeg = DEFAULT_LASER_RANGE,
     )
 
     companion object {
@@ -61,6 +65,7 @@ data class AppSettings(
         const val DEFAULT_DEGREES_PER_NOTCH = 24f
         const val DEFAULT_KNOB_FRACTION = 0.20f
         const val DEFAULT_VIBRATION = 0.7f
+        const val DEFAULT_LASER_RANGE = 30f
 
         val SENSITIVITY_RANGE = 0.25f..3f
         val ACCELERATION_RANGE = 0f..1.5f
@@ -68,5 +73,6 @@ data class AppSettings(
         val DEAD_ZONE_RANGE = 0f..0.15f
         val DEGREES_PER_NOTCH_RANGE = 10f..60f
         val KNOB_FRACTION_RANGE = 0.14f..0.28f
+        val LASER_RANGE_DEG_RANGE = 10f..90f
     }
 }

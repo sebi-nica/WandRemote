@@ -129,8 +129,6 @@ fun CalibrationScreen(vm: WandViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        CornerCalibrationCard(vm)
-
         SectionCard("Gyroscope bias") {
             Text(
                 "Place the phone on a flat table and don't touch it. Takes about 3 seconds.",

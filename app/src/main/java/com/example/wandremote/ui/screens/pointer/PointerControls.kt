@@ -55,8 +55,6 @@ internal class ControlsVisuals(
     val active: Set<ControlId> = emptySet(),
     /** Drawn dimmed. They still receive touches (the screen decides what a press does). */
     val disabled: Set<ControlId> = emptySet(),
-    /** Drawn with a subtle accent to draw attention (e.g. Re-center while a re-center is pending). */
-    val attention: Set<ControlId> = emptySet(),
 )
 
 /**
@@ -176,7 +174,6 @@ internal fun PointerControls(
                 pressed = spec.id in pressed,
                 active = spec.id in visuals.active,
                 disabled = spec.id in visuals.disabled,
-                attention = spec.id in visuals.attention,
                 scheme = scheme,
             )
             when (val shape = spec.shape) {
@@ -205,7 +202,6 @@ private fun controlColors(
     pressed: Boolean,
     active: Boolean,
     disabled: Boolean,
-    attention: Boolean,
     scheme: androidx.compose.material3.ColorScheme,
 ): ControlColors {
     if (disabled) return ControlColors(scheme.onSurface.copy(alpha = 0.12f), scheme.onSurface.copy(alpha = 0.38f), null)
@@ -227,12 +223,6 @@ private fun controlColors(
         ControlId.ARROW_LEFT, ControlId.ARROW_RIGHT, ControlId.ARROW_UP, ControlId.ARROW_DOWN ->
             if (on) ControlColors(scheme.primary, scheme.onPrimary, null)
             else ControlColors(scheme.secondaryContainer, scheme.onSecondaryContainer, null)
-        ControlId.RECENTER, ControlId.RECALIBRATE ->
-            when {
-                on -> ControlColors(scheme.primary, scheme.onPrimary, null)
-                attention -> ControlColors(scheme.primaryContainer, scheme.onPrimaryContainer, scheme.primary)
-                else -> ControlColors(scheme.surfaceVariant, scheme.onSurfaceVariant, scheme.outline)
-            }
     }
 }
 

@@ -1,14 +1,12 @@
 package com.example.wandremote.desktop
 
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.example.wandremote.shared.Gesture
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
-enum class ControlMode(val label: String) { POINTER("Pointer"), THREE_D("3D"), PRESENTER("Presenter") }
+enum class ControlMode(val label: String) { POINTER("Pointer"), THREE_D("3D") }
 
 enum class ViewerBackend(val label: String) { BUILT_IN("Built-in preview"), BLENDER("Blender emulation") }
 
@@ -37,22 +35,8 @@ class AppState {
     var laserY by mutableStateOf(0.5f)
 
     var startMinimized by mutableStateOf(false)
-    var overlayOnPresenter by mutableStateOf(true)
     var viewerBackend by mutableStateOf(ViewerBackend.BUILT_IN)
-
-    val gestureActions = mutableStateMapOf(
-        Gesture.FLICK_LEFT to "Left arrow",
-        Gesture.FLICK_RIGHT to "Right arrow",
-        Gesture.BACK_TAP to "Left click",
-        Gesture.DOUBLE_BACK_TAP to "Double click",
-        Gesture.SHAKE to "Ctrl+Z",
-    )
 }
-
-val SHORTCUT_OPTIONS = listOf(
-    "None", "Left arrow", "Right arrow", "Up arrow", "Down arrow", "Page Up", "Page Down",
-    "Left click", "Right click", "Double click", "Ctrl+Z", "Ctrl+Y", "Esc", "F5",
-)
 
 /** First non-loopback, up, site-local IPv4 address; falls back to 127.0.0.1. */
 fun findLocalIpv4(): String = try {

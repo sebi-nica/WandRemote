@@ -28,13 +28,10 @@ class ConnectionStateExtTest {
     }
 
     @Test
-    fun sessionIdAndCalibrationKey() {
+    fun sessionId() {
         assertEquals("10.0.0.2:5000", wifi.companionSessionId())
         assertEquals("bt:My PC", link.companionSessionId())
         assertNull(hid.companionSessionId())
-        assertEquals("10.0.0.2", wifi.calibrationKey())
-        assertEquals("bt:My PC", link.calibrationKey())
-        assertNull(ConnectionState.Disconnected.calibrationKey())
     }
 
     @Test

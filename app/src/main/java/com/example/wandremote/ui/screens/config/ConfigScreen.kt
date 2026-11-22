@@ -52,6 +52,8 @@ private const val RAD_TO_DEG = 57.29578f
 @Composable
 fun ConfigScreen(vm: WandViewModel) {
     val settings by vm.settings.collectAsState()
+    val pcScreen by vm.pcScreen.collectAsState()
+    val pcAspect by vm.pcAspect.collectAsState()
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         TestArea(vm)
@@ -83,6 +85,18 @@ fun ConfigScreen(vm: WandViewModel) {
                     { v -> vm.updateSettings { copy(deadZone = v) } },
                     valueRange = AppSettings.DEAD_ZONE_RANGE,
                     valueText = { "%.1f°/s".format(it * RAD_TO_DEG) },
+                )
+                val range = settings.laserRangeDeg.roundToInt()
+                LabeledSlider(
+                    "Laser range: $range°", range.toFloat(),
+                    { v -> vm.updateSettings { copy(laserRangeDeg = v.roundToInt().toFloat()) } },
+                    valueRange = AppSettings.LASER_RANGE_DEG_RANGE,
+                    valueText = { "" },
+                )
+                Text(
+                    laserRangeHint(range, if (pcScreen != null) pcAspect else null),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -181,4 +195,11 @@ private fun TestArea(vm: WandViewModel) {
             TextButton(onClick = { dot = Offset.Unspecified }) { Text("Center") }
         }
     }
+}
+
+/** Explains the laser range slider in terms of what the hand does; the vertical part needs the PC screen [aspect]. */
+private fun laserRangeHint(rangeDeg: Int, aspect: Float?): String {
+    val horizontal = "Turn your hand $rangeDeg° to sweep the laser from the left edge of the screen to the right edge"
+    if (aspect == null) return "$horizontal."
+    return "$horizontal, and ${(rangeDeg * aspect).roundToInt()}° from top to bottom."
 }

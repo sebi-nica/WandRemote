@@ -52,6 +52,11 @@ class BluetoothLink(context: Context) : PacketSink {
     private val _state = MutableStateFlow<BluetoothLinkState>(BluetoothLinkState.Idle)
     val state: StateFlow<BluetoothLinkState> = _state.asStateFlow()
 
+    private val _screenInfo = MutableStateFlow<Packet.ScreenInfo?>(null)
+
+    /** The PC's screen size, from its reply to Hello; null until received (reset when the link ends). */
+    val screenInfo: StateFlow<Packet.ScreenInfo?> = _screenInfo.asStateFlow()
+
     private class Session(val outbox: Channel<Packet>, val job: Job) {
         @Volatile var socket: BluetoothSocket? = null
         @Volatile var connected = false
@@ -93,6 +98,7 @@ class BluetoothLink(context: Context) : PacketSink {
                 _state.value = BluetoothLinkState.Error(problem)
                 return
             }
+            _screenInfo.value = null
             s = Session(Channel(Channel.UNLIMITED), Job(scope.coroutineContext[Job]))
             session = s
             _state.value = BluetoothLinkState.Connecting(address)
@@ -166,7 +172,9 @@ class BluetoothLink(context: Context) : PacketSink {
             try {
                 while (isActive) {
                     val pkt = StreamFraming.read(input) ?: continue
-                    if (pkt is Packet.Pong) {
+                    if (pkt is Packet.ScreenInfo) {
+                        _screenInfo.value = pkt
+                    } else if (pkt is Packet.Pong) {
                         val now = System.nanoTime()
                         lastPong.set(now)
                         val ms = roundTripMs(now, pkt.timestampNanos)
@@ -224,6 +232,7 @@ class BluetoothLink(context: Context) : PacketSink {
     fun disconnect() {
         synchronized(lock) {
             closeLocked()
+            _screenInfo.value = null
             _state.value = BluetoothLinkState.Idle
         }
     }

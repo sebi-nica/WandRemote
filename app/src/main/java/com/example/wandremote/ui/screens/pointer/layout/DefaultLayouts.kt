@@ -12,7 +12,7 @@ import com.example.wandremote.settings.AppSettings
  *    half) and, above the ring at the screen edge, the movement toggle;
  *  - laser: a large rounded button above-left of the click ring, left of the toggle;
  *  - arrows: a compact cross in the left strip (x < 0.36), around a third of the way down;
- *  - Re-center / Recalibrate: two small buttons along the top-right (the status text lives at the top-left, x < 0.48).
+ *  - the top strip is free: the status text lives there.
  */
 object DefaultLayouts {
     /** Typical height / width of the content area on a 9:19.5 phone, used when the real size is not known. */
@@ -22,7 +22,7 @@ object DefaultLayouts {
     private const val TOGGLE_R = 0.085f
     private const val ARROW_SIZE = 0.11f
     private const val ARROW_GAP = 0.012f
-    private const val TOP_BUTTON_H = 0.14f
+    private const val TOP_CLEARANCE = 0.14f
 
     /**
      * The default arrangement for right-handed use. [knobFraction] is the knob radius
@@ -49,14 +49,14 @@ object DefaultLayouts {
         val laserBottomU = ringTopU - 0.015f
         val laserTopU = laserBottomU - 0.26f
 
-        // Arrow cross in the left strip, kept clear of the top buttons and the click ring.
+        // Arrow cross in the left strip, kept clear of the status text and the click ring.
         val step = ARROW_SIZE + ARROW_GAP
         val arrowCx = 0.01f + step * 1.5f
         val ringUpperLeftU = cyU - ringOut * 0.695f // y of the left-click sector's upper corner (sin 44 deg)
         val halfCross = step * 1.5f
         val arrowCyU = (0.34f * a + 0.02f)
             .coerceAtMost(ringUpperLeftU - 0.02f - halfCross)
-            .coerceAtLeast(TOP_BUTTON_H + 0.06f + halfCross)
+            .coerceAtLeast(TOP_CLEARANCE + 0.06f + halfCross)
 
         fun arrow(id: ControlId, dx: Float, dyU: Float, label: String): ControlSpec {
             val ccx = arrowCx + dx * step
@@ -92,16 +92,6 @@ object DefaultLayouts {
                 arrow(ControlId.ARROW_LEFT, -1f, 0f, "LEFT"),
                 arrow(ControlId.ARROW_RIGHT, 1f, 0f, "RIGHT"),
                 arrow(ControlId.ARROW_DOWN, 0f, 1f, "DOWN"),
-                ControlSpec(
-                    ControlId.RECENTER,
-                    ControlShape.RoundRect(0.50f, 0f, 0.74f, y(TOP_BUTTON_H), 0.03f),
-                    "Re-center",
-                ),
-                ControlSpec(
-                    ControlId.RECALIBRATE,
-                    ControlShape.RoundRect(0.76f, 0f, 1f, y(TOP_BUTTON_H), 0.03f),
-                    "Recalibrate",
-                ),
             ),
         )
     }

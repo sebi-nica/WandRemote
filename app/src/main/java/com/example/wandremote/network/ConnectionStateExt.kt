@@ -19,13 +19,6 @@ fun ConnectionState.companionSessionId(): String? = when (this) {
     else -> null
 }
 
-/** Calibration profile key: the Wi-Fi host, or "bt:<device>" for a Bluetooth link; null when neither. */
-fun ConnectionState.calibrationKey(): String? = when (this) {
-    is ConnectionState.Connected -> host
-    is ConnectionState.ConnectedLink -> "bt:$deviceName"
-    else -> null
-}
-
 /** Round-trip in ms for a Pong that echoes [sentNanos], at least 1 (0 means "pending"). */
 fun roundTripMs(nowNanos: Long, sentNanos: Long): Int =
     ((nowNanos - sentNanos) / 1_000_000L).toInt().coerceAtLeast(1)

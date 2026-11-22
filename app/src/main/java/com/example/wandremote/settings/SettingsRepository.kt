@@ -32,6 +32,7 @@ class SettingsRepository(context: Context) {
             invertScroll = prefs.getBoolean(INVERT_SCROLL, d.invertScroll),
             leftHanded = prefs.getBoolean(LEFT_HANDED, d.leftHanded),
             vibrationStrength = prefs.getFloat(VIBRATION, d.vibrationStrength),
+            laserRangeDeg = prefs.getFloat(LASER_RANGE, d.laserRangeDeg),
             gyroBias = GyroBias(
                 prefs.getFloat(BIAS_X, 0f),
                 prefs.getFloat(BIAS_Y, 0f),
@@ -52,6 +53,7 @@ class SettingsRepository(context: Context) {
             .putBoolean(INVERT_SCROLL, s.invertScroll)
             .putBoolean(LEFT_HANDED, s.leftHanded)
             .putFloat(VIBRATION, s.vibrationStrength)
+            .putFloat(LASER_RANGE, s.laserRangeDeg)
             .putFloat(BIAS_X, s.gyroBias.x)
             .putFloat(BIAS_Y, s.gyroBias.y)
             .putFloat(BIAS_Z, s.gyroBias.z)
@@ -70,6 +72,7 @@ class SettingsRepository(context: Context) {
         const val INVERT_SCROLL = "invert_scroll"
         const val LEFT_HANDED = "left_handed"
         const val VIBRATION = "vibration_strength"
+        const val LASER_RANGE = "laser_range_deg"
         const val BIAS_X = "gyro_bias_x"
         const val BIAS_Y = "gyro_bias_y"
         const val BIAS_Z = "gyro_bias_z"

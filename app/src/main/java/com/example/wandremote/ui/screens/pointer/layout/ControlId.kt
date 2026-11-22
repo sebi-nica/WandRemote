@@ -11,6 +11,4 @@ enum class ControlId {
     ARROW_RIGHT,
     ARROW_UP,
     ARROW_DOWN,
-    RECENTER,
-    RECALIBRATE,
 }

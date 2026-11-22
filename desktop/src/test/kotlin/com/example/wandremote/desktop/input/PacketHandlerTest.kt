@@ -33,6 +33,18 @@ class PacketHandlerTest {
     }
 
     @Test
+    fun helloIsAnsweredWithScreenInfoOnTheSameSource() {
+        val a = FakeSource()
+        val b = FakeSource()
+        val h = handler(FakeInput())
+        h.handle(Packet.Hello("Phone"), a)
+        val info = a.replies.single() as Packet.ScreenInfo
+        assertTrue(info.widthPx > 0 && info.heightPx > 0)
+        assertTrue(b.replies.isEmpty())
+        h.reset()
+    }
+
+    @Test
     fun disconnectReleasesHeldButtons() {
         val input = FakeInput()
         val src = FakeSource()

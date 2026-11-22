@@ -9,8 +9,7 @@ enum class PacketType(val id: Byte) {
     BUTTON(2),
     SCROLL(3),
     ORIENTATION(4),
-    ABSOLUTE(5),
-    GESTURE(6),
+    // 5 (absolute aim) and 6 (gesture) were removed; keep the ids unused.
     LASER(7),
     PING(8),
     PONG(9),
@@ -18,7 +17,8 @@ enum class PacketType(val id: Byte) {
     BYE(11),
     SET_MODE(12),
     ZOOM(13),
-    KEY(14);
+    KEY(14),
+    SCREEN_INFO(15);
 
     companion object {
         private val byId = entries.associateBy { it.id }
@@ -34,14 +34,6 @@ enum class MouseButton(val id: Byte) {
     }
 }
 
-enum class Gesture(val id: Byte) {
-    BACK_TAP(0), DOUBLE_BACK_TAP(1), FLICK_LEFT(2), FLICK_RIGHT(3), SHAKE(4);
-
-    companion object {
-        fun fromId(id: Byte): Gesture? = entries.firstOrNull { it.id == id }
-    }
-}
-
 /** Keyboard keys the phone can press on the PC. */
 enum class RemoteKey(val id: Byte) {
     LEFT(0), RIGHT(1), UP(2), DOWN(3), PAGE_UP(4), PAGE_DOWN(5), ESCAPE(6), F5(7), ENTER(8), SPACE(9);
@@ -53,7 +45,7 @@ enum class RemoteKey(val id: Byte) {
 
 /** Which control mode the phone is in; the PC adapts how it treats incoming packets. */
 enum class RemoteMode(val id: Byte) {
-    POINTER(0), PRESENTER(1), THREE_D(2);
+    POINTER(0), THREE_D(2); // 1 was presenter mode (removed)
 
     companion object {
         fun fromId(id: Byte): RemoteMode? = entries.firstOrNull { it.id == id }
@@ -73,12 +65,6 @@ sealed class Packet(val type: PacketType) {
 
     /** Full device orientation as a unit quaternion (3D mode). */
     data class Orientation(val w: Float, val x: Float, val y: Float, val z: Float) : Packet(PacketType.ORIENTATION)
-
-    /** Absolute cursor position, normalized 0..1 over the target screen (presenter mode). */
-    data class Absolute(val x: Float, val y: Float) : Packet(PacketType.ABSOLUTE)
-
-    /** A recognized gesture; the PC maps it to an action/shortcut. */
-    data class GestureEvent(val gesture: Gesture) : Packet(PacketType.GESTURE)
 
     /** Laser-pointer overlay state, position normalized 0..1. */
     data class Laser(val on: Boolean, val x: Float, val y: Float) : Packet(PacketType.LASER)
@@ -101,6 +87,9 @@ sealed class Packet(val type: PacketType) {
 
     /** Key press/release (a tap is press + release), e.g. arrow keys for slides. */
     data class Key(val key: RemoteKey, val pressed: Boolean) : Packet(PacketType.KEY)
+
+    /** PC → phone (reply to Hello): size of the PC's primary screen, so the phone knows its aspect ratio. */
+    data class ScreenInfo(val widthPx: Int, val heightPx: Int) : Packet(PacketType.SCREEN_INFO)
 }
 
 /** Binary encoding: [MAGIC][type][payload...], little-endian. */
@@ -116,8 +105,6 @@ object PacketCodec {
             is Packet.Button -> buf.put(packet.button.id).put(if (packet.pressed) 1 else 0)
             is Packet.Scroll -> buf.putFloat(packet.dx).putFloat(packet.dy)
             is Packet.Orientation -> buf.putFloat(packet.w).putFloat(packet.x).putFloat(packet.y).putFloat(packet.z)
-            is Packet.Absolute -> buf.putFloat(packet.x).putFloat(packet.y)
-            is Packet.GestureEvent -> buf.put(packet.gesture.id)
             is Packet.Laser -> buf.put(if (packet.on) 1 else 0).putFloat(packet.x).putFloat(packet.y)
             is Packet.Ping -> buf.putLong(packet.timestampNanos)
             is Packet.Pong -> buf.putLong(packet.timestampNanos)
@@ -129,6 +116,7 @@ object PacketCodec {
             is Packet.SetMode -> buf.put(packet.mode.id)
             is Packet.Zoom -> buf.putFloat(packet.amount)
             is Packet.Key -> buf.put(packet.key.id).put(if (packet.pressed) 1 else 0)
+            is Packet.ScreenInfo -> buf.putInt(packet.widthPx).putInt(packet.heightPx)
         }
         return buf.array().copyOf(buf.position())
     }
@@ -145,8 +133,6 @@ object PacketCodec {
                 PacketType.BUTTON -> Packet.Button(MouseButton.fromId(buf.get()), buf.get() != 0.toByte())
                 PacketType.SCROLL -> Packet.Scroll(buf.float, buf.float)
                 PacketType.ORIENTATION -> Packet.Orientation(buf.float, buf.float, buf.float, buf.float)
-                PacketType.ABSOLUTE -> Packet.Absolute(buf.float, buf.float)
-                PacketType.GESTURE -> Packet.GestureEvent(Gesture.fromId(buf.get()) ?: return null)
                 PacketType.LASER -> Packet.Laser(buf.get() != 0.toByte(), buf.float, buf.float)
                 PacketType.PING -> Packet.Ping(buf.long)
                 PacketType.PONG -> Packet.Pong(buf.long)
@@ -160,6 +146,7 @@ object PacketCodec {
                 PacketType.SET_MODE -> Packet.SetMode(RemoteMode.fromId(buf.get()) ?: return null)
                 PacketType.ZOOM -> Packet.Zoom(buf.float)
                 PacketType.KEY -> Packet.Key(RemoteKey.fromId(buf.get()) ?: return null, buf.get() != 0.toByte())
+                PacketType.SCREEN_INFO -> Packet.ScreenInfo(buf.int, buf.int)
             }
         } catch (e: java.nio.BufferUnderflowException) {
             null
